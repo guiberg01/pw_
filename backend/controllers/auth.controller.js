@@ -18,28 +18,23 @@ const generateToken = (userId) => {
 
 //guardando o refreshToken no redis
 const restoreRefreshToken = async (userId, refreshToken) => {
-  await redis.set(
-    `refreshToken:${userId}`,
-    refreshToken,
-    "EX",
-    7 * 24 * 60 * 60,
-  );
+  await redis.set(`refreshToken:${userId}`, refreshToken, "EX", 7 * 24 * 60 * 60);
 };
+
+//função para setar os cookies dinamicamente
+function setAuthCookie(res, name, value, maxAge) {
+  res.cookie(name, value, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "strict",
+    maxAge: maxAge,
+  });
+}
 
 //setando os cookies
 const setCookies = (res, accessToken, refreshToken) => {
-  res.cookie("accessToken", accessToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: 15 * 60 * 1000,
-  });
-  res.cookie("refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "strict",
-    maxAge: 7 * 24 * 60 * 1000,
-  });
+  setAuthCookie(res, "accessToken", accessToken, 15 * 60 * 1000); // 15 minutos
+  setAuthCookie(res, "refreshToken", refreshToken, 7 * 24 * 60 * 60 * 1000); // 7 dias
 };
 
 export const signup = async (req, res) => {
@@ -109,6 +104,31 @@ export const logout = async (req, res) => {
     res.clearCookie("accessToken");
     res.clearCookie("refreshToken");
     res.json({ message: "Logout realizado com sucesso" });
+  } catch (error) {
+    return res.status(500).json({ message: error.message });
+  }
+};
+
+export const refreshToken = async (req, res) => {
+  try {
+    const refreshToken = req.cookies.refreshToken;
+
+    if (!refreshToken) {
+      return res.status(401).json({ message: "Refresh token ausente" });
+    }
+
+    const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN);
+    const storedToken = await redis.get(`refreshToken:${decoded.userId}`);
+
+    if (storedToken !== refreshToken) {
+      return res.status(403).json({ message: "Refresh token inválido" });
+    }
+
+    const accessToken = jwt.sign({ userId: decoded.userId }, process.env.ACCESS_TOKEN, { expiresIn: "15m" });
+
+    setAuthCookie(res, "accessToken", accessToken, 15 * 60 * 1000); // 15 minutos
+
+    res.json({ message: "Token renovado com sucesso" });
   } catch (error) {
     return res.status(500).json({ message: error.message });
   }
