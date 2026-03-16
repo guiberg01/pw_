@@ -14,6 +14,9 @@ export const errorHandler = (err, req, res, next) => {
   if (err.message === "NotAdmin") {
     return res.status(403).json({ message: "Acesso proibido - Usuário não é administrador" });
   }
+  if (err.message === "Forbidden") {
+    return res.status(403).json({ message: "Acesso proibido - Permissão insuficiente" });
+  }
 
   // Validação
   if (err.name === "ValidationError") {

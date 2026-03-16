@@ -11,6 +11,7 @@ dns.setServers(["8.8.8.8", "8.8.4.4"]);
 // Routes
 import authRoutes from "./routes/auth.route.js";
 import productRoutes from "./routes/product.route.js";
+import storeRoutes from "./routes/store.route.js";
 
 // Database
 import { connectDB } from "./config/db.js";
@@ -31,6 +32,9 @@ app.use("/api/auth", authRoutes);
 
 // Definindo rota products
 app.use("/api/products", productRoutes);
+
+// Definindo rota stores
+app.use("/api/stores", storeRoutes);
 
 // Middleware de tratamento de erros
 app.use(errorHandler);

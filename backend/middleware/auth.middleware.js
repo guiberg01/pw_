@@ -24,15 +24,23 @@ export const isLoggedIn = async (req, res, next) => {
   }
 };
 
-export const isAdmin = (req, res, next) => {
-  console.log("Verificando se o usuário é admin:", req.user);
-  try {
-    const userRole = req.user.role;
-    if (userRole !== "admin") {
-      throw new Error("NotAdmin");
+export const authorizeRoles = (...allowedRoles) => {
+  return (req, res, next) => {
+    try {
+      if (!req.user) {
+        throw new Error("UserNotFound");
+      }
+
+      if (!allowedRoles.includes(req.user.role)) {
+        throw new Error("Forbidden");
+      }
+
+      next();
+    } catch (error) {
+      next(error);
     }
-    next();
-  } catch (error) {
-    next(error);
-  }
+  };
 };
+
+export const isAdmin = authorizeRoles("admin");
+export const isSellerOrAdmin = authorizeRoles("seller", "admin");
