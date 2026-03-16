@@ -2,6 +2,7 @@
 import express from "express";
 import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
+import { errorHandler } from "./middleware/errorHandler.middleware.js";
 
 // Configuração de DNS para evitar problemas de conexão
 import dns from "dns";
@@ -9,6 +10,7 @@ dns.setServers(["8.8.8.8", "8.8.4.4"]);
 
 // Routes
 import authRoutes from "./routes/auth.route.js";
+import productRoutes from "./routes/product.route.js";
 
 // Database
 import { connectDB } from "./config/db.js";
@@ -26,6 +28,12 @@ app.use(cookieParser());
 
 // Definindo rota auth
 app.use("/api/auth", authRoutes);
+
+// Definindo rota products
+app.use("/api/products", productRoutes);
+
+// Middleware de tratamento de erros
+app.use(errorHandler);
 
 // Iniciando o servidor
 app.listen(PORT, () => {

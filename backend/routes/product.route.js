@@ -1,8 +1,11 @@
 import { Router } from "express";
-import { get } from "mongoose";
+import { allProducts } from "../controllers/product.controller.js";
+import { isLoggedIn, isAdmin } from "../middleware/auth.middleware.js";
 
 const router = Router();
 
-router.get("/", allProducts);
+router.get("/", isLoggedIn, isAdmin, allProducts);
+
+//router.post("/add", createProduct);
 
 export default router;

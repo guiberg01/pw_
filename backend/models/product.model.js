@@ -32,6 +32,11 @@ const productSchema = new mongoose.Schema(
       required: [true, "A quantidade em estoque do produto é obrigatória"],
       min: [0, "A quantidade em estoque do produto não pode ser negativa"],
     },
+    status: {
+      type: String,
+      enum: ["available", "blocked", "removed"],
+      default: "available",
+    },
   },
   { timestamps: true },
 );
