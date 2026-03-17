@@ -1,6 +1,6 @@
-export const validateBody = (schema) => {
+const validate = (schema, target) => {
   return (req, res, next) => {
-    const result = schema.safeParse(req.body);
+    const result = schema.safeParse(req[target]);
 
     if (!result.success) {
       const validationError = new Error("Requisição inválida - Falha na validação");
@@ -9,7 +9,10 @@ export const validateBody = (schema) => {
       return next(validationError);
     }
 
-    req.body = result.data;
+    req[target] = result.data;
     next();
   };
 };
+
+export const validateBody = (schema) => validate(schema, "body");
+export const validateParams = (schema) => validate(schema, "params");

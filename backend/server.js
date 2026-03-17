@@ -36,6 +36,13 @@ app.use("/api/products", productRoutes);
 // Definindo rota stores
 app.use("/api/stores", storeRoutes);
 
+// Middleware para rotas não encontradas
+app.use((req, res, next) => {
+  const error = new Error("Rota não encontrada");
+  error.statusCode = 404;
+  next(error);
+});
+
 // Middleware de tratamento de erros
 app.use(errorHandler);
 

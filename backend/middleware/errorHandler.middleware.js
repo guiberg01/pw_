@@ -1,27 +1,35 @@
+import { sendError } from "../helpers/errorResponse.js";
+
 export const errorHandler = (err, req, res, next) => {
   console.error(err);
 
   if (err.name === "TokenExpiredError") {
-    return res.status(401).json({ message: "Não autorizado - Token expirado" });
+    return sendError(res, 401, "Não autorizado - Token expirado", "TOKEN_EXPIRED");
   }
+
   if (err.name === "JsonWebTokenError") {
-    return res.status(401).json({ message: "Não autorizado - Token inválido ou ausente" });
+    return sendError(res, 401, "Não autorizado - Token inválido ou ausente", "TOKEN_INVALID");
   }
 
   if (err.name === "ValidationError") {
-    return res.status(400).json({ message: "Requisição inválida - Falha na validação", details: err.errors });
+    return sendError(res, 400, "Requisição inválida - Falha na validação", "MONGOOSE_VALIDATION_ERROR", err.errors);
+  }
+
+  if (err.name === "CastError") {
+    return sendError(res, 400, "Requisição inválida - Identificador inválido", "INVALID_IDENTIFIER");
   }
 
   if (err.name === "MongoServerError") {
-    return res.status(500).json({ message: "Erro no banco de dados" });
+    if (err.code === 11000) {
+      return sendError(res, 409, "Conflito no banco de dados - Registro já existente", "DUPLICATE_KEY", err.keyValue);
+    }
+
+    return sendError(res, 500, "Erro no banco de dados", "DATABASE_ERROR");
   }
 
   if (err.statusCode) {
-    return res.status(err.statusCode).json({
-      message: err.message,
-      ...(err.details ? { details: err.details } : {}),
-    });
+    return sendError(res, err.statusCode, err.message, "APPLICATION_ERROR", err.details);
   }
 
-  return res.status(500).json({ message: "Erro interno do servidor" });
+  return sendError(res, 500, "Erro interno do servidor", "INTERNAL_SERVER_ERROR");
 };

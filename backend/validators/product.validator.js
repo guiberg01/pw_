@@ -1,5 +1,10 @@
 import { z } from "zod";
 
+//zod pra validações
+
+const mongoId = z.string().regex(/^[a-f\d]{24}$/i, "Identificador inválido");
+
+//criar
 export const createProductSchema = z.object({
   name: z.string().trim().min(1, "Nome é obrigatório"),
   description: z.string().trim().min(1, "Descrição é obrigatória"),
@@ -11,6 +16,7 @@ export const createProductSchema = z.object({
   storeId: z.string().trim().min(1).optional(),
 });
 
+//update
 export const updateProductSchema = z
   .object({
     name: z.string().trim().min(1, "Nome é obrigatório").optional(),
@@ -25,3 +31,7 @@ export const updateProductSchema = z
   .refine((data) => Object.keys(data).length > 0, {
     message: "Envie ao menos um campo para atualização",
   });
+
+export const productIdParamSchema = z.object({
+  id: mongoId,
+});

@@ -2,6 +2,7 @@
 import User from "../models/user.model.js";
 import jwt from "jsonwebtoken";
 import { redis } from "../config/redis.js";
+import { sendSuccess } from "../helpers/successResponse.js";
 
 //criando os tokens
 const generateToken = (userId) => {
@@ -55,7 +56,7 @@ export const signup = async (req, res, next) => {
 
     setCookies(res, accessToken, refreshToken);
 
-    return res.status(201).json({
+    return sendSuccess(res, 201, "Cadastro realizado com sucesso", {
       id: user._id,
       name: user.name,
       email: user.email,
@@ -82,7 +83,7 @@ export const login = async (req, res, next) => {
 
     setCookies(res, accessToken, refreshToken);
 
-    return res.status(200).json({
+    return sendSuccess(res, 200, "Login realizado com sucesso", {
       id: user._id,
       name: user.name,
       email: user.email,
@@ -104,7 +105,7 @@ export const logout = async (req, res, next) => {
 
     res.clearCookie("accessToken");
     res.clearCookie("refreshToken");
-    return res.json({ message: "Logout realizado com sucesso" });
+    return sendSuccess(res, 200, "Logout realizado com sucesso");
   } catch (error) {
     return next(error);
   }
@@ -135,7 +136,7 @@ export const refreshToken = async (req, res, next) => {
 
     setAuthCookie(res, "accessToken", accessToken, 15 * 60 * 1000);
 
-    return res.json({ message: "Token renovado com sucesso" });
+    return sendSuccess(res, 200, "Token renovado com sucesso");
   } catch (error) {
     return next(error);
   }

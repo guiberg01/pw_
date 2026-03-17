@@ -1,19 +1,8 @@
 import Store from "../models/store.model.js";
+import { slugify } from "../helpers/slug.js";
+import { sendSuccess } from "../helpers/successResponse.js";
 
-//função para gerar um slug único a partir do nome da loja (slug pra deixar a url bonitinha)
-const slugify = (value) => {
-  return value
-    .toString()
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9\s-]/g, "")
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-");
-};
-
-//função para garantir que o slug seja único no banco de dados
+//garantir slug unico no banco
 const buildUniqueSlug = async (name) => {
   const baseSlug = slugify(name);
   let slug = baseSlug;
@@ -27,15 +16,26 @@ const buildUniqueSlug = async (name) => {
   return slug;
 };
 
+export const allStoresForAdmin = async (req, res, next) => {
+  try {
+    const [stores, myStore] = await Promise.all([
+      Store.find().populate("owner", "name email role"),
+      Store.findOne({ owner: req.user._id }).select("_id"),
+    ]);
+
+    return sendSuccess(res, 200, "Lojas listadas com sucesso", {
+      stores,
+      myStoreId: myStore?._id ?? null,
+    });
+  } catch (error) {
+    return next(error);
+  }
+};
+
+//cria loja
 export const createStore = async (req, res, next) => {
   try {
     const { name, description, logoUrl } = req.body;
-
-    if (!name) {
-      const error = new Error("Nome da loja é obrigatório");
-      error.statusCode = 400;
-      throw error;
-    }
 
     const existingStore = await Store.findOne({ owner: req.user._id });
     if (existingStore) {
@@ -54,7 +54,7 @@ export const createStore = async (req, res, next) => {
       owner: req.user._id,
     });
 
-    return res.status(201).json(store);
+    return sendSuccess(res, 201, "Loja criada com sucesso", store);
   } catch (error) {
     return next(error);
   }
@@ -70,7 +70,7 @@ export const getMyStore = async (req, res, next) => {
       throw error;
     }
 
-    return res.status(200).json(store);
+    return sendSuccess(res, 200, "Loja encontrada com sucesso", store);
   } catch (error) {
     return next(error);
   }
@@ -87,7 +87,7 @@ export const getStoreById = async (req, res, next) => {
       throw error;
     }
 
-    return res.status(200).json(store);
+    return sendSuccess(res, 200, "Loja encontrada com sucesso", store);
   } catch (error) {
     return next(error);
   }
@@ -123,7 +123,7 @@ export const updateMyStore = async (req, res, next) => {
 
     await store.save();
 
-    return res.status(200).json(store);
+    return sendSuccess(res, 200, "Loja atualizada com sucesso", store);
   } catch (error) {
     return next(error);
   }

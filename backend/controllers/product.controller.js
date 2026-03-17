@@ -1,5 +1,6 @@
 import Product from "../models/product.model.js";
 import Store from "../models/store.model.js";
+import { sendSuccess } from "../helpers/successResponse.js";
 
 const canManageProduct = (product, user) => {
   if (user.role === "admin") return true;
@@ -10,7 +11,7 @@ const canManageProduct = (product, user) => {
 export const allProducts = async (req, res, next) => {
   try {
     const products = await Product.find().populate("store", "name slug owner status");
-    return res.status(200).json(products);
+    return sendSuccess(res, 200, "Produtos listados com sucesso", products);
   } catch (error) {
     return next(error);
   }
@@ -22,10 +23,20 @@ export const createProductForMyStore = async (req, res, next) => {
 
     let store = null;
 
-    if (req.user.role === "admin" && storeId) {
-      store = await Store.findById(storeId);
+    if (req.user.role === "admin") {
+      if (storeId) {
+        store = await Store.findById(storeId);
+      } else {
+        store = await Store.findOne({ owner: req.user._id });
+
+        if (!store) {
+          const error = new Error("Admin sem loja vinculada precisa informar o storeId");
+          error.statusCode = 400;
+          throw error;
+        }
+      }
     } else {
-      if (storeId && req.user.role !== "admin") {
+      if (storeId) {
         const error = new Error("Seller só pode criar produto na própria loja");
         error.statusCode = 403;
         throw error;
@@ -54,7 +65,7 @@ export const createProductForMyStore = async (req, res, next) => {
 
     const productWithStore = await Product.findById(product._id).populate("store", "name slug owner status");
 
-    return res.status(201).json(productWithStore);
+    return sendSuccess(res, 201, "Produto criado com sucesso", productWithStore);
   } catch (error) {
     return next(error);
   }
@@ -82,7 +93,7 @@ export const updateProduct = async (req, res, next) => {
 
     const updatedProduct = await Product.findById(product._id).populate("store", "name slug owner status");
 
-    return res.status(200).json(updatedProduct);
+    return sendSuccess(res, 200, "Produto atualizado com sucesso", updatedProduct);
   } catch (error) {
     return next(error);
   }
@@ -107,7 +118,7 @@ export const deleteProduct = async (req, res, next) => {
 
     await product.deleteOne();
 
-    return res.status(200).json({ message: "Produto removido com sucesso" });
+    return sendSuccess(res, 200, "Produto removido com sucesso");
   } catch (error) {
     return next(error);
   }
