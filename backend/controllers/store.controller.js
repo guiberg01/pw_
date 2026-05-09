@@ -1,4 +1,5 @@
 import Store from "../models/store.model.js";
+import MelhorEnvioAuth from "../models/melhorEnvioAuth.model.js";
 import { createHttpError } from "../helpers/httpError.js";
 import { sendSuccess } from "../helpers/successResponse.js";
 import melhorenvioService from "../services/melhorenvio.service.js";
@@ -6,6 +7,7 @@ import {
   ensureStoreHasNoActiveProducts,
   createStores,
   findActiveStoreByOwnerOrThrow,
+  findAnyStoreByOwnerOrThrow,
   findStoreByIdOrThrow,
   listVisibleStores,
   softDeleteStore,
@@ -19,92 +21,130 @@ import {
 import { notifyStoreVisitMilestone } from "../services/notification.service.js";
 
 export const allStores = async (req, res, next) => {
-    const { categoryId, page, limit } = req.validatedQuery ?? {};
-    const stores = await listVisibleStores({ categoryId, page, limit });
-    return sendSuccess(res, 200, "Lojas listadas com sucesso", stores);
+  const { categoryId, page, limit } = req.validatedQuery ?? {};
+  const stores = await listVisibleStores({ categoryId, page, limit });
+  return sendSuccess(res, 200, "Lojas listadas com sucesso", stores);
 };
 
 export const createStore = async (req, res, next) => {
-    const store = await createStores(req.user._id, req.body);
-    const melhorEnvioOnboardingUrl = melhorenvioService.generateAuthorizationUrl(store._id.toString());
+  const store = await createStores(req.user._id, req.body);
+  if (req.user.role !== "seller") {
+    req.user.role = "seller";
+    await req.user.save();
+  }
+  const melhorEnvioOnboardingUrl = melhorenvioService.generateAuthorizationUrl(store._id.toString());
 
-    return sendSuccess(res, 201, "Loja criada com sucesso", {
-      ...store.toObject(),
-      melhorEnvioOnboardingUrl,
-    });
+  return sendSuccess(res, 201, "Loja criada com sucesso", {
+    ...store.toObject(),
+    melhorEnvioOnboardingUrl,
+  });
 };
 
 export const getMyStore = async (req, res, next) => {
-    const store = await findActiveStoreByOwnerOrThrow(req.user._id);
-    return sendSuccess(res, 200, "Loja encontrada com sucesso", store);
+  const store = await findAnyStoreByOwnerOrThrow(req.user._id);
+  return sendSuccess(res, 200, "Loja encontrada com sucesso", store);
 };
 
 export const getStoreById = async (req, res, next) => {
-    const { storeId } = req.params;
-    const store = await findStoreByIdOrThrow(storeId);
+  const { storeId } = req.params;
+  const store = await findStoreByIdOrThrow(storeId);
 
-    // Melhor esforço: contabiliza visitas sem interromper resposta ao cliente.
-    const visitsCount = Number(store.visitsCount ?? 0) + 1;
-    const lastMilestone = Number(store.lastVisitMilestoneNotified ?? 0);
-    const currentMilestone = Math.floor(visitsCount / 50) * 50;
+  // Melhor esforço: contabiliza visitas sem interromper resposta ao cliente.
+  const visitsCount = Number(store.visitsCount ?? 0) + 1;
+  const lastMilestone = Number(store.lastVisitMilestoneNotified ?? 0);
+  const currentMilestone = Math.floor(visitsCount / 50) * 50;
 
-    void Store.updateOne(
-      { _id: store._id },
-      {
-        $set: {
-          visitsCount,
-          ...(currentMilestone > 0 && currentMilestone > lastMilestone
-            ? { lastVisitMilestoneNotified: currentMilestone }
-            : {}),
-        },
+  void Store.updateOne(
+    { _id: store._id },
+    {
+      $set: {
+        visitsCount,
+        ...(currentMilestone > 0 && currentMilestone > lastMilestone
+          ? { lastVisitMilestoneNotified: currentMilestone }
+          : {}),
       },
-    )
-      .then(async () => {
-        if (currentMilestone > 0 && currentMilestone > lastMilestone) {
-          await notifyStoreVisitMilestone({
-            storeId: store._id,
-            ownerId: store.owner?._id ?? store.owner,
-            visitsCount: currentMilestone,
-          });
-        }
-      })
-      .catch(() => {
-        // Ignore falhas de telemetria de visita para não degradar endpoint público.
-      });
+    },
+  )
+    .then(async () => {
+      if (currentMilestone > 0 && currentMilestone > lastMilestone) {
+        await notifyStoreVisitMilestone({
+          storeId: store._id,
+          ownerId: store.owner?._id ?? store.owner,
+          visitsCount: currentMilestone,
+        });
+      }
+    })
+    .catch(() => {});
 
-    return sendSuccess(res, 200, "Loja encontrada com sucesso", store);
+  return sendSuccess(res, 200, "Loja encontrada com sucesso", store);
 };
 
 export const updateMyStore = async (req, res, next) => {
-    const store = await updateStoreForOwner(req.user._id, req.body);
-    return sendSuccess(res, 200, "Loja atualizada com sucesso", store);
+  const store = await updateStoreForOwner(req.user._id, req.body);
+  return sendSuccess(res, 200, "Loja atualizada com sucesso", store);
 };
 
 export const deleteMyStore = async (req, res, next) => {
-    const { storeId } = req.params;
-    const store = await findStoreByIdOrThrow(storeId);
+  const { storeId } = req.params;
+  const store = await findStoreByIdOrThrow(storeId);
 
-    if (!store.owner.equals(req.user._id)) {
-      throw createHttpError("Apenas o dono da loja pode deletar esta loja", 403, undefined, "STORE_DELETE_FORBIDDEN");
-    }
+  if (!store.owner.equals(req.user._id)) {
+    throw createHttpError("Apenas o dono da loja pode deletar esta loja", 403, undefined, "STORE_DELETE_FORBIDDEN");
+  }
 
-    await ensureStoreHasNoActiveProducts(storeId);
-    await softDeleteStore(store._id);
+  await ensureStoreHasNoActiveProducts(storeId);
+  await softDeleteStore(store._id);
 
-    return sendSuccess(res, 200, "Loja deletada com sucesso");
+  return sendSuccess(res, 200, "Loja deletada com sucesso");
 };
 
 export const createMyStoreStripeOnboardingLink = async (req, res, next) => {
-    const onboarding = await createStripeOnboardingLinkForStoreOwner(req.user._id, req.body);
-    return sendSuccess(res, 200, "Link de onboarding Stripe gerado com sucesso", onboarding);
+  const onboarding = await createStripeOnboardingLinkForStoreOwner(req.user._id, req.body);
+  return sendSuccess(res, 200, "Link de onboarding Stripe gerado com sucesso", onboarding);
 };
 
 export const getMyStoreStripeConnectStatus = async (req, res, next) => {
-    const status = await getStripeConnectStatusForStoreOwner(req.user._id);
-    return sendSuccess(res, 200, "Status da conta Stripe obtido com sucesso", status);
+  const status = await getStripeConnectStatusForStoreOwner(req.user._id);
+  return sendSuccess(res, 200, "Status da conta Stripe obtido com sucesso", status);
+};
+
+export const getMyStoreMelhorEnvioStatus = async (req, res, next) => {
+  const store = await findAnyStoreByOwnerOrThrow(req.user._id);
+  const auth = await MelhorEnvioAuth.findOne({ store: store._id })
+    .select("store expiresAt lastRefreshed isActive")
+    .lean();
+
+  const onboardingUrl = melhorenvioService.generateAuthorizationUrl(store._id.toString());
+
+  if (!auth) {
+    return sendSuccess(res, 200, "Status do MelhorEnvio obtido com sucesso", {
+      storeId: store._id,
+      isConfigured: false,
+      isActive: false,
+      isExpired: false,
+      needsReconnect: true,
+      expiresAt: null,
+      lastRefreshed: null,
+      onboardingUrl,
+    });
+  }
+
+  const expiresAt = auth.expiresAt ? new Date(auth.expiresAt) : null;
+  const isExpired = !expiresAt || expiresAt.getTime() <= Date.now();
+
+  return sendSuccess(res, 200, "Status do MelhorEnvio obtido com sucesso", {
+    storeId: store._id,
+    isConfigured: true,
+    isActive: Boolean(auth.isActive),
+    isExpired,
+    needsReconnect: !auth.isActive || isExpired,
+    expiresAt,
+    lastRefreshed: auth.lastRefreshed ?? null,
+    onboardingUrl,
+  });
 };
 
 export const postMyStoreStripePayoutDispatch = async (req, res, next) => {
-    const result = await dispatchPendingPayoutTransfersForStoreOwner(req.user._id);
-    return sendSuccess(res, 200, "Transferências pendentes disparadas com sucesso", result);
+  const result = await dispatchPendingPayoutTransfersForStoreOwner(req.user._id);
+  return sendSuccess(res, 200, "Transferências pendentes disparadas com sucesso", result);
 };
