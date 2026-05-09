@@ -70,9 +70,7 @@ export const endUserSession = async (req, res) => {
         jti: decodedAccessToken.jti,
         expiresAt: decodedAccessToken.exp,
       });
-    } catch (error) {
-      // Access token já expirado ou inválido não precisa ser bloqueado.
-    }
+    } catch (error) {}
   }
 
   if (refreshToken) {
@@ -93,13 +91,25 @@ export const rotateAccessToken = async (req, res) => {
   const refreshToken = req.cookies.refreshToken;
 
   if (!refreshToken) {
+    clearAuthCookie(res, "accessToken");
+    clearAuthCookie(res, "refreshToken");
     throw createHttpError("Refresh token ausente", 401, undefined, "AUTH_REFRESH_TOKEN_MISSING");
   }
 
-  const decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN);
+  let decoded;
+  try {
+    decoded = jwt.verify(refreshToken, process.env.REFRESH_TOKEN);
+  } catch (error) {
+    clearAuthCookie(res, "accessToken");
+    clearAuthCookie(res, "refreshToken");
+    throw createHttpError("Refresh token inválido", 403, undefined, "AUTH_REFRESH_TOKEN_INVALID");
+  }
+
   const storedToken = await getRefreshToken(decoded.userId);
 
   if (storedToken !== refreshToken) {
+    clearAuthCookie(res, "accessToken");
+    clearAuthCookie(res, "refreshToken");
     throw createHttpError("Refresh token inválido", 403, undefined, "AUTH_REFRESH_TOKEN_INVALID");
   }
 
@@ -107,6 +117,8 @@ export const rotateAccessToken = async (req, res) => {
 
   if (!user || user.status !== accountStatuses.ACTIVE) {
     await deleteRefreshToken(decoded.userId);
+    clearAuthCookie(res, "accessToken");
+    clearAuthCookie(res, "refreshToken");
     throw createHttpError("Usuário inválido ou inativo", 403, undefined, "AUTH_USER_INACTIVE");
   }
 
