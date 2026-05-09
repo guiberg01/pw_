@@ -7,6 +7,7 @@ import {
   setMyDefaultAddress,
   updateMyAddress,
 } from "../controllers/address.controller.js";
+import { lookupCep } from "../controllers/cep.controller.js";
 import { isLoggedIn } from "../middleware/auth.middleware.js";
 import { validateBody, validateParams } from "../middleware/validation.middleware.js";
 import { addressIdParamSchema, createAddressSchema, updateAddressSchema } from "../validators/address.validator.js";
@@ -16,6 +17,7 @@ const router = Router();
 router.use(isLoggedIn);
 
 router.get("/", getMyAddresses);
+router.get("/lookup", lookupCep);
 router.get("/:id", validateParams(addressIdParamSchema), getMyAddressById);
 router.post("/", validateBody(createAddressSchema), createMyAddress);
 router.put("/:id", validateParams(addressIdParamSchema), validateBody(updateAddressSchema), updateMyAddress);
