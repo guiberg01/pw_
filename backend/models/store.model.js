@@ -24,10 +24,20 @@ const storeSchema = new mongoose.Schema(
     },
     cnpj: {
       type: String,
-      default: null,
+      default: undefined,
       trim: true,
+      set: (value) => {
+        if (value == null) return undefined;
+        const normalized = String(value).replace(/\D/g, "").trim();
+        return normalized.length > 0 ? normalized : undefined;
+      },
     },
     logoUrl: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    bannerUrl: {
       type: String,
       default: "",
       trim: true,
@@ -107,7 +117,13 @@ storeSchema.index(
   },
 );
 
-storeSchema.index({ cnpj: 1 }, { unique: true, sparse: true });
+storeSchema.index(
+  { cnpj: 1 },
+  {
+    unique: true,
+    sparse: true,
+  },
+);
 
 storeSchema.virtual("product", {
   ref: "Product",
