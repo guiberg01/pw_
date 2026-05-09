@@ -3,6 +3,7 @@ import { createHttpError } from "../helpers/httpError.js";
 import {
   createProductForStore,
   getProduct,
+  getProductsByStoreOwner,
   findActiveProductOrThrow,
   findActiveStoreByOwnerOrThrow,
   getVisibleProducts,
@@ -14,64 +15,71 @@ const canManageProduct = (product, user) => {
   return product.store?.owner?.toString() === user._id.toString();
 };
 
-export const allProducts = async (req, res, next) => {
-    const { categoryId, page, limit } = req.validatedQuery ?? {};
-    const visibleProducts = await getVisibleProducts({ categoryId, page, limit });
+export const getMyStoreProducts = async (req, res, next) => {
+  const { categoryId, search, status, page, limit } = req.validatedQuery ?? {};
+  const products = await getProductsByStoreOwner(req.user._id, { categoryId, search, status, page, limit });
 
-    return sendSuccess(res, 200, "Produtos listados com sucesso", visibleProducts);
+  return sendSuccess(res, 200, "Produtos da loja listados com sucesso", products);
+};
+
+export const allProducts = async (req, res, next) => {
+  const { categoryId, page, limit } = req.validatedQuery ?? {};
+  const visibleProducts = await getVisibleProducts({ categoryId, page, limit });
+
+  return sendSuccess(res, 200, "Produtos listados com sucesso", visibleProducts);
 };
 
 export const getProductById = async (req, res, next) => {
-    const { id } = req.params;
-    const product = await getProduct(id);
+  const { id } = req.params;
+  const product = await getProduct(id);
 
-    return sendSuccess(res, 200, "Produto encontrado com sucesso", product);
+  return sendSuccess(res, 200, "Produto encontrado com sucesso", product);
 };
 
 export const createProductForMyStore = async (req, res, next) => {
-    const { name, description, category, highlighted, maxPerPerson, mainVariant, variants } = req.body;
+  const { name, description, category, highlighted, maxPerPerson, mainVariant, variants } = req.body;
 
-    const store = await findActiveStoreByOwnerOrThrow(req.user._id);
-    const productWithStore = await createProductForStore(store._id, {
-      name,
-      description,
-      category,
-      highlighted,
-      maxPerPerson,
-      mainVariant,
-      variants,
-    });
+  const store = await findActiveStoreByOwnerOrThrow(req.user._id);
+  const productWithStore = await createProductForStore(store._id, {
+    name,
+    description,
+    category,
+    highlighted,
+    maxPerPerson,
+    mainVariant,
+    variants,
+  });
 
-    const productResponse = productWithStore.toObject();
+  const productResponse = productWithStore.toObject();
 
-    return sendSuccess(res, 201, "Produto criado com sucesso", {
-      ...productResponse,
-      mainVariantId: productResponse.mainVariant?._id?.toString?.() ?? null,
-    });
+  return sendSuccess(res, 201, "Produto criado com sucesso", {
+    ...productResponse,
+    mainVariantId: productResponse.mainVariant?._id?.toString?.() ?? null,
+  });
 };
 
 export const updateProduct = async (req, res, next) => {
-    const { id } = req.params;
-    const product = await findActiveProductOrThrow(id, { populateStoreOwner: true });
+  const { id } = req.params;
+  const product = await findActiveProductOrThrow(id, { populateStoreOwner: true });
 
-    if (!canManageProduct(product, req.user)) {
-      throw createHttpError("Acesso proibido - Permissão insuficiente", 403, undefined, "PRODUCT_MANAGE_FORBIDDEN");
-    }
+  if (!canManageProduct(product, req.user)) {
+    throw createHttpError("Acesso proibido - Permissão insuficiente", 403, undefined, "PRODUCT_MANAGE_FORBIDDEN");
+  }
 
-    const updatedProduct = await updateProductAndPopulate(product, req.body);
+  const updatedProduct = await updateProductAndPopulate(product, req.body);
 
-    return sendSuccess(res, 200, "Produto atualizado com sucesso", updatedProduct);
+  return sendSuccess(res, 200, "Produto atualizado com sucesso", updatedProduct);
 };
 
 export const deleteProduct = async (req, res, next) => {
-    const { id } = req.params;
-    const product = await findActiveProductOrThrow(id, { populateStoreOwner: true });
+  const { id } = req.params;
+  const product = await findActiveProductOrThrow(id, { populateStoreOwner: true });
 
-    if (!canManageProduct(product, req.user)) {
-      throw createHttpError("Acesso proibido - Permissão insuficiente", 403, undefined, "PRODUCT_MANAGE_FORBIDDEN");
-    }
+  if (!canManageProduct(product, req.user)) {
+    throw createHttpError("Acesso proibido - Permissão insuficiente", 403, undefined, "PRODUCT_MANAGE_FORBIDDEN");
+  }
 
-    await softDeleteProduct(id);
+  await softDeleteProduct(id);
 
-    return sendSuccess(res, 200, "Produto removido com sucesso");
+  return sendSuccess(res, 200, "Produto removido com sucesso");
 };
