@@ -1,12 +1,23 @@
 import axios from "axios";
+import { removeFrontendCookie } from "@/utils/cookies";
+import { toast } from "sonner";
+
+const resolveBaseURL = () => {
+  if (typeof window === "undefined") {
+    return process.env.NEXT_PUBLIC_API_URL;
+  }
+
+  return "/api";
+};
 
 export const api = axios.create({
-  baseURL: process.env.NEXT_PUBLIC_API_URL,
+  baseURL: resolveBaseURL(),
   withCredentials: true,
 });
 
 let isRefreshing = false;
 let failedQueue = [];
+let sessionExpiredHandled = false;
 
 const processQueue = (error, token = null) => {
   failedQueue.forEach((prom) => {
@@ -24,7 +35,11 @@ api.interceptors.response.use(
   async (error) => {
     const originalRequest = error.config;
 
-    if (originalRequest.url.includes("/auth/login")) {
+    if (originalRequest.url.includes("/auth/login") || originalRequest.url.includes("/auth/refresh")) {
+      return Promise.reject(error);
+    }
+
+    if (originalRequest.skipAutoRefresh) {
       return Promise.reject(error);
     }
 
@@ -54,8 +69,16 @@ api.interceptors.response.use(
         processQueue(refreshError, null);
 
         if (typeof window !== "undefined") {
-          // depois adicionar um toast de error dizendo que a sessão expirou
-          window.location.href = "/login";
+          removeFrontendCookie("userName");
+          removeFrontendCookie("userRole");
+
+          if (!sessionExpiredHandled) {
+            sessionExpiredHandled = true;
+
+            toast.error("Sua sessão expirou. Faça login novamente.", {
+              duration: 4000,
+            });
+          }
         }
 
         return Promise.reject(refreshError);
