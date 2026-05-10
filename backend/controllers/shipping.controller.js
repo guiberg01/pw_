@@ -17,13 +17,6 @@ const resolveSellerDashboardBaseUrl = () => {
   return raw ? String(raw).trim().replace(/\/$/, "") : null;
 };
 
-const isLocalDevelopmentUrl = (value) => {
-  if (!value || !URL.canParse(value)) return false;
-
-  const parsedUrl = new URL(value);
-  return ["localhost", "127.0.0.1", "0.0.0.0"].includes(parsedUrl.hostname);
-};
-
 /**
  * Controllers para endpoints de shipping
  */
@@ -147,20 +140,7 @@ export const oauthCallback = async (req, res) => {
       const dashboardPath = `/dashboard/stores/${storeId}/shipping?authenticated=true`;
       const dashboardBaseUrl = resolveSellerDashboardBaseUrl();
 
-      if (dashboardBaseUrl && !isLocalDevelopmentUrl(dashboardBaseUrl)) {
-        return res.redirect(`${dashboardBaseUrl}${dashboardPath}`);
-      }
-
-      return res.status(200).json({
-        success: true,
-        message: "Autenticação com MelhorEnvio concluída com sucesso",
-        data: {
-          storeId,
-          authenticated: true,
-          dashboardPath,
-        },
-        timestamp: new Date().toISOString(),
-      });
+      return res.redirect(`${dashboardBaseUrl ?? ""}${dashboardPath}`);
     })
     .catch((oauthError) => {
       return res.status(500).json({

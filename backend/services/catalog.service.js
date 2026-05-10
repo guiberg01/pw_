@@ -4,6 +4,7 @@ import Store from "../models/store.model.js";
 import Category from "../models/category.model.js";
 import Address from "../models/address.model.js";
 import { createHttpError } from "../helpers/httpError.js";
+import { accountStatuses } from "../constants/accountStatuses.js";
 import {
   createDocumentWithUniqueSlug,
   isDuplicateFieldError,
@@ -41,6 +42,9 @@ const populateProductById = (productId) =>
     .populate("mainVariant")
     .populate("productVariants");
 
+const populateStoreDetails = (query) =>
+  query.populate("owner", "name email telephone cpf role status").populate("address");
+
 const normalizeAttributes = (attributes) => {
   if (!attributes || typeof attributes !== "object") return {};
   return { ...attributes };
@@ -64,6 +68,10 @@ const normalizeVariantInput = (variantInput = {}) => {
   if (variantInput.length !== undefined) normalizedVariant.length = variantInput.length;
   if (variantInput.width !== undefined) normalizedVariant.width = variantInput.width;
   if (variantInput.height !== undefined) normalizedVariant.height = variantInput.height;
+
+  if (variantInput.onPromotion !== undefined) normalizedVariant.onPromotion = Boolean(variantInput.onPromotion);
+  if (variantInput.salePrice !== undefined) normalizedVariant.salePrice = variantInput.salePrice;
+  if (variantInput.discountPercent !== undefined) normalizedVariant.discountPercent = variantInput.discountPercent;
 
   return normalizedVariant;
 };
@@ -125,6 +133,11 @@ const ensureAddressBelongsToOwnerOrThrow = async (addressId, ownerId) => {
   return address;
 };
 
+const normalizeBrazilianDocument = (value) =>
+  String(value ?? "")
+    .replace(/\D/g, "")
+    .trim();
+
 const cleanupCreatedProduct = async (productId) => {
   await ProductVariant.deleteMany({ product: productId });
   await Product.findByIdAndDelete(productId);
@@ -161,12 +174,38 @@ const buildPaginationResult = (items, total, page, limit) => ({
 });
 
 const syncProductVariants = async (productId, mainVariantPayload, extraVariantsPayload = [], removeVariantIds = []) => {
+  // Remove variantes extras primeiro
+  if (removeVariantIds.length > 0) {
+    const deleteResult = await ProductVariant.deleteMany({
+      _id: { $in: removeVariantIds },
+      product: productId,
+      isMainVariant: false,
+    });
+  }
+
+  // Sync variante principal (main)
   if (mainVariantPayload) {
     const mainVariant = await ProductVariant.findOne({ product: productId, isMainVariant: true });
 
     if (mainVariant) {
-      Object.assign(mainVariant, mainVariantPayload, { isMainVariant: true, product: productId });
-      await mainVariant.save();
+      const updateData = { ...mainVariantPayload };
+
+      if (mainVariantPayload.price !== undefined && Number(mainVariantPayload.price) < Number(mainVariant.price)) {
+        updateData.previousPrice = mainVariant.price;
+      } else if (
+        mainVariantPayload.price !== undefined &&
+        Number(mainVariantPayload.price) >= Number(mainVariant.price)
+      ) {
+        updateData.previousPrice = null;
+      }
+
+      if (mainVariantPayload.onPromotion !== undefined)
+        updateData.onPromotion = Boolean(mainVariantPayload.onPromotion);
+      if (mainVariantPayload.salePrice !== undefined) updateData.salePrice = mainVariantPayload.salePrice;
+      if (mainVariantPayload.discountPercent !== undefined)
+        updateData.discountPercent = mainVariantPayload.discountPercent;
+
+      await ProductVariant.findByIdAndUpdate(mainVariant._id, updateData, { new: true });
     } else {
       await ProductVariant.create({
         ...mainVariantPayload,
@@ -176,14 +215,7 @@ const syncProductVariants = async (productId, mainVariantPayload, extraVariantsP
     }
   }
 
-  if (removeVariantIds.length > 0) {
-    await ProductVariant.deleteMany({
-      _id: { $in: removeVariantIds },
-      product: productId,
-      isMainVariant: false,
-    });
-  }
-
+  // Sync variantes extras
   for (const variantPayload of extraVariantsPayload) {
     if (variantPayload.variantId) {
       const existingVariant = await ProductVariant.findOne({
@@ -197,8 +229,22 @@ const syncProductVariants = async (productId, mainVariantPayload, extraVariantsP
       }
 
       const { variantId, ...variantData } = variantPayload;
-      Object.assign(existingVariant, variantData, { product: productId, isMainVariant: false });
-      await existingVariant.save();
+      const updateData = { ...variantData };
+
+      if (variantData.price !== undefined) {
+        if (Number(variantData.price) < Number(existingVariant.price)) {
+          updateData.previousPrice = existingVariant.price;
+        } else {
+          updateData.previousPrice = null;
+        }
+      }
+
+      if (variantData.onPromotion !== undefined) updateData.onPromotion = Boolean(variantData.onPromotion);
+      if (variantData.salePrice !== undefined) updateData.salePrice = variantData.salePrice;
+      if (variantData.discountPercent !== undefined) updateData.discountPercent = variantData.discountPercent;
+
+      // Use findByIdAndUpdate to avoid unique constraint issues
+      await ProductVariant.findByIdAndUpdate(variantPayload.variantId, updateData, { new: true });
       continue;
     }
 
@@ -212,7 +258,7 @@ const syncProductVariants = async (productId, mainVariantPayload, extraVariantsP
   }
 };
 
-export const getVisibleProducts = async ({ categoryId, page, limit } = {}) => {
+export const getVisibleProducts = async ({ categoryId, search, page, limit } = {}) => {
   const pagination = normalizePagination({ page, limit });
   const activeStoreIds = await Store.find({ status: "active" }).distinct("_id");
 
@@ -229,6 +275,15 @@ export const getVisibleProducts = async ({ categoryId, page, limit } = {}) => {
     filters.category = categoryId;
   }
 
+  if (search) {
+    const term = search.trim();
+    filters.$or = [
+      { name: { $regex: term, $options: "i" } },
+      { description: { $regex: term, $options: "i" } },
+      { "mainVariant.sku": { $regex: term, $options: "i" } },
+    ];
+  }
+
   const skip = (pagination.page - 1) * pagination.limit;
 
   const [items, total] = await Promise.all([
@@ -240,6 +295,52 @@ export const getVisibleProducts = async ({ categoryId, page, limit } = {}) => {
         path: "store",
         select: "name slug owner status",
         match: { status: "active" },
+      })
+      .populate("category", "name status")
+      .populate("mainVariant")
+      .populate("productVariants"),
+    Product.countDocuments(filters),
+  ]);
+
+  return buildPaginationResult(items, total, pagination.page, pagination.limit);
+};
+
+export const getProductsByStoreOwner = async (ownerId, { categoryId, search, status, page, limit } = {}) => {
+  const pagination = normalizePagination({ page, limit });
+
+  const store = await Store.findOne({ owner: ownerId, status: "active" }).select("_id");
+  if (!store) {
+    return buildPaginationResult([], 0, pagination.page, pagination.limit);
+  }
+
+  const filters = { store: store._id };
+
+  if (categoryId) {
+    filters.category = categoryId;
+  }
+
+  if (status) {
+    filters.status = status;
+  }
+
+  if (search) {
+    filters.$or = [
+      { name: { $regex: search.trim(), $options: "i" } },
+      { description: { $regex: search.trim(), $options: "i" } },
+      { "mainVariant.sku": { $regex: search.trim(), $options: "i" } },
+    ];
+  }
+
+  const skip = (pagination.page - 1) * pagination.limit;
+
+  const [items, total] = await Promise.all([
+    Product.find(filters)
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(pagination.limit)
+      .populate({
+        path: "store",
+        select: "name slug owner status",
       })
       .populate("category", "name status")
       .populate("mainVariant")
@@ -288,32 +389,36 @@ export const findProductVariantByIdOrThrow = async (variantId) => {
 };
 
 export const createStores = async (id, data) => {
-  const { name, description, logoUrl, addressId } = data;
+  const { name, description, logoUrl, bannerUrl, addressId, cnpj } = data;
   const validAddress = await ensureAddressBelongsToOwnerOrThrow(addressId, id);
-  const existingStore = await Store.findOne({ owner: id });
+  const normalizedCnpj = cnpj !== undefined ? normalizeBrazilianDocument(cnpj) || undefined : undefined;
+  const existingStore = await Store.findOne({ owner: id }).sort({ updatedAt: -1 });
+
   if (existingStore) {
-    throw createHttpError("Este seller já possui uma loja", 409, undefined, "STORE_ALREADY_EXISTS");
-  }
+    if (existingStore.deletedAt == null && existingStore.status === "active") {
+      throw createHttpError("Este seller já possui uma loja", 409, undefined, "STORE_ALREADY_EXISTS");
+    }
 
-  const deletedStore = await Store.findOne({ owner: id, includeDeleted: true }).sort({ updatedAt: -1 });
-
-  if (deletedStore) {
-    deletedStore.name = name;
-    deletedStore.description = description ?? "";
-    deletedStore.logoUrl = logoUrl ?? "";
-    deletedStore.address = validAddress?._id ?? deletedStore.address ?? null;
-    deletedStore.status = "active";
+    existingStore.name = name;
+    existingStore.description = description ?? "";
+    existingStore.logoUrl = logoUrl ?? "";
+    existingStore.bannerUrl = bannerUrl ?? "";
+    existingStore.address = validAddress?._id ?? existingStore.address ?? null;
+    if (cnpj !== undefined) existingStore.cnpj = normalizedCnpj;
+    existingStore.status = "active";
+    existingStore.deletedAt = null;
 
     const slugSaved = await saveDocumentWithUniqueSlug({
-      document: deletedStore,
+      document: existingStore,
       sourceValue: name,
       maxRetries: MAX_SLUG_RETRIES,
     });
+
     if (!slugSaved) {
       throw createHttpError("Não foi possível gerar um slug único para a loja", 409, undefined, "STORE_SLUG_CONFLICT");
     }
 
-    return deletedStore;
+    return existingStore;
   }
 
   let store;
@@ -324,8 +429,10 @@ export const createStores = async (id, data) => {
         name: name,
         description: description,
         logoUrl: logoUrl,
+        bannerUrl: bannerUrl,
         owner: id,
         address: validAddress?._id ?? null,
+        cnpj: normalizedCnpj,
       },
       sourceValue: name,
       maxRetries: MAX_SLUG_RETRIES,
@@ -345,8 +452,18 @@ export const createStores = async (id, data) => {
   return store;
 };
 
+export const findAnyStoreByOwnerOrThrow = async (ownerId) => {
+  const store = await Store.findOne({ owner: ownerId }).sort({ updatedAt: -1 });
+
+  if (!store) {
+    throw createHttpError("Loja não encontrada", 404, undefined, "STORE_NOT_FOUND");
+  }
+
+  return store;
+};
+
 export const updateStoreForOwner = async (ownerId, data) => {
-  const { name, description, logoUrl, addressId } = data;
+  const { name, description, cnpj, logoUrl, bannerUrl, addressId, visibility } = data;
   const store = await findActiveStoreByOwnerOrThrow(ownerId);
 
   if (addressId !== undefined) {
@@ -355,7 +472,17 @@ export const updateStoreForOwner = async (ownerId, data) => {
   }
 
   if (description !== undefined) store.description = description;
+  if (cnpj !== undefined) store.cnpj = cnpj;
   if (logoUrl !== undefined) store.logoUrl = logoUrl;
+  if (bannerUrl !== undefined) store.bannerUrl = bannerUrl;
+
+  if (visibility !== undefined) {
+    store.visibility = store.visibility || {};
+    if (visibility.showOwnerName !== undefined) store.visibility.showOwnerName = visibility.showOwnerName;
+    if (visibility.showVisitCount !== undefined) store.visibility.showVisitCount = visibility.showVisitCount;
+    if (visibility.showDescription !== undefined) store.visibility.showDescription = visibility.showDescription;
+    if (visibility.showLocation !== undefined) store.visibility.showLocation = visibility.showLocation;
+  }
 
   if (name && name !== store.name) {
     store.name = name;
@@ -369,15 +496,47 @@ export const updateStoreForOwner = async (ownerId, data) => {
     if (!slugSaved) {
       throw createHttpError("Não foi possível gerar um slug único para a loja", 409, undefined, "STORE_SLUG_CONFLICT");
     }
-
-    return store;
   }
 
-  if (description !== undefined || logoUrl !== undefined || addressId !== undefined) {
+  if (
+    description !== undefined ||
+    cnpj !== undefined ||
+    logoUrl !== undefined ||
+    bannerUrl !== undefined ||
+    addressId !== undefined ||
+    name !== undefined ||
+    visibility !== undefined
+  ) {
     await store.save();
   }
 
-  return store;
+  return populateStoreDetails(Store.findById(store._id));
+};
+
+export const updateStoreStatusForOwner = async (ownerId, status) => {
+  if (![accountStatuses.ACTIVE, accountStatuses.SUSPENDED].includes(status)) {
+    throw createHttpError("Status de loja inválido", 400, undefined, "STORE_STATUS_INVALID");
+  }
+
+  const store = await findAnyStoreByOwnerOrThrow(ownerId);
+
+  if (![accountStatuses.ACTIVE, accountStatuses.SUSPENDED].includes(store.status)) {
+    throw createHttpError(
+      "A loja não pode trocar de status neste momento",
+      403,
+      undefined,
+      "STORE_STATUS_CHANGE_FORBIDDEN",
+    );
+  }
+
+  if (store.status === status) {
+    return populateStoreDetails(Store.findById(store._id));
+  }
+
+  store.status = status;
+  await store.save();
+
+  return populateStoreDetails(Store.findById(store._id));
 };
 
 export const findExistingStoreOrThrow = async (storeId) => {
@@ -405,7 +564,7 @@ export const findActiveStoreByOwnerOrThrow = async (ownerId) => {
 };
 
 export const findStoreByIdOrThrow = async (storeId) => {
-  const store = await Store.findOne({ _id: storeId }).populate("owner", "name email role");
+  const store = await populateStoreDetails(Store.findOne({ _id: storeId }));
 
   if (!store) {
     throw createHttpError("Loja não encontrada", 404, undefined, "STORE_NOT_FOUND");
@@ -528,9 +687,9 @@ export const updateProductAndPopulate = async (product, payload) => {
     .lean();
 
   if (
-    previousMainVariant?.price != null
-    && updatedMainVariant?.price != null
-    && Number(updatedMainVariant.price) < Number(previousMainVariant.price)
+    previousMainVariant?.price != null &&
+    updatedMainVariant?.price != null &&
+    Number(updatedMainVariant.price) < Number(previousMainVariant.price)
   ) {
     await notifyProductDiscountForCustomers({
       productId: product._id,

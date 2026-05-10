@@ -22,6 +22,11 @@ const productVariantSchema = new mongoose.Schema(
       required: true,
       min: 0,
     },
+    previousPrice: {
+      type: Number,
+      default: null,
+      min: 0,
+    },
     stock: {
       type: Number,
       required: true,
@@ -38,6 +43,22 @@ const productVariantSchema = new mongoose.Schema(
       type: String,
       default: null,
       trim: true,
+    },
+    onPromotion: {
+      type: Boolean,
+      default: false,
+    },
+    salePrice: {
+      //preço promocional
+      type: Number,
+      default: null,
+      min: 0,
+    },
+    discountPercent: {
+      type: Number,
+      default: null,
+      min: 0,
+      max: 100,
     },
     datasheet: {
       type: String,
@@ -68,7 +89,7 @@ const productVariantSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-productVariantSchema.index({ sku: 1 }, { unique: true });
+productVariantSchema.index({ product: 1, sku: 1 }, { unique: true });
 productVariantSchema.index({ product: 1, stock: 1 });
 productVariantSchema.index(
   { product: 1, isMainVariant: 1 },
