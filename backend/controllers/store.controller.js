@@ -12,6 +12,7 @@ import {
   listVisibleStores,
   softDeleteStore,
   updateStoreForOwner,
+  updateStoreStatusForOwner,
 } from "../services/catalog.service.js";
 import {
   createStripeOnboardingLinkForStoreOwner,
@@ -42,6 +43,8 @@ export const createStore = async (req, res, next) => {
 
 export const getMyStore = async (req, res, next) => {
   const store = await findAnyStoreByOwnerOrThrow(req.user._id);
+  await store.populate("owner", "name email telephone cpf role status");
+  await store.populate("address");
   return sendSuccess(res, 200, "Loja encontrada com sucesso", store);
 };
 
@@ -82,6 +85,11 @@ export const getStoreById = async (req, res, next) => {
 export const updateMyStore = async (req, res, next) => {
   const store = await updateStoreForOwner(req.user._id, req.body);
   return sendSuccess(res, 200, "Loja atualizada com sucesso", store);
+};
+
+export const updateMyStoreStatus = async (req, res, next) => {
+  const store = await updateStoreStatusForOwner(req.user._id, req.body.status);
+  return sendSuccess(res, 200, "Status da loja atualizado com sucesso", store);
 };
 
 export const deleteMyStore = async (req, res, next) => {

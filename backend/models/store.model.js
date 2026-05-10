@@ -93,6 +93,24 @@ const storeSchema = new mongoose.Schema(
       default: 0,
       min: 0,
     },
+    visibility: {
+      showOwnerName: {
+        type: Boolean,
+        default: true,
+      },
+      showVisitCount: {
+        type: Boolean,
+        default: true,
+      },
+      showDescription: {
+        type: Boolean,
+        default: true,
+      },
+      showLocation: {
+        type: Boolean,
+        default: true,
+      },
+    },
   },
   {
     timestamps: true,

@@ -9,6 +9,7 @@ import {
   getMyStore,
   getStoreById,
   updateMyStore,
+  updateMyStoreStatus,
   deleteMyStore,
 } from "../controllers/store.controller.js";
 import { getMyStoreOrderById, getMyStoreOrders } from "../controllers/storeOrder.controller.js";
@@ -23,6 +24,7 @@ import {
   storeListQuerySchema,
   stripeOnboardingLinkSchema,
   updateMyStoreSchema,
+  updateMyStoreStatusSchema,
 } from "../validators/store.validator.js";
 import {
   storeOrderIdParamSchema,
@@ -38,6 +40,7 @@ router.get("/", validateQuery(storeListQuerySchema), allStores);
 
 router.get("/me", isLoggedIn, getMyStore);
 router.put("/me", isLoggedIn, isSeller, validateBody(updateMyStoreSchema), updateMyStore);
+router.patch("/me/status", isLoggedIn, isSeller, validateBody(updateMyStoreStatusSchema), updateMyStoreStatus);
 router.get("/me/products", isLoggedIn, isSeller, validateQuery(productListQuerySchema), getMyStoreProducts);
 router.get("/me/melhorenvio/status", isLoggedIn, isSeller, getMyStoreMelhorEnvioStatus);
 router.get("/me/stripe/status", isLoggedIn, isSeller, getMyStoreStripeConnectStatus);
