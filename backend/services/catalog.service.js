@@ -4,6 +4,7 @@ import Store from "../models/store.model.js";
 import Category from "../models/category.model.js";
 import Address from "../models/address.model.js";
 import { createHttpError } from "../helpers/httpError.js";
+import { accountStatuses } from "../constants/accountStatuses.js";
 import {
   createDocumentWithUniqueSlug,
   isDuplicateFieldError,
@@ -40,6 +41,9 @@ const populateProductById = (productId) =>
     .populate("category", "name status")
     .populate("mainVariant")
     .populate("productVariants");
+
+const populateStoreDetails = (query) =>
+  query.populate("owner", "name email telephone cpf role status").populate("address");
 
 const normalizeAttributes = (attributes) => {
   if (!attributes || typeof attributes !== "object") return {};
@@ -170,27 +174,38 @@ const buildPaginationResult = (items, total, page, limit) => ({
 });
 
 const syncProductVariants = async (productId, mainVariantPayload, extraVariantsPayload = [], removeVariantIds = []) => {
+  // Remove variantes extras primeiro
+  if (removeVariantIds.length > 0) {
+    const deleteResult = await ProductVariant.deleteMany({
+      _id: { $in: removeVariantIds },
+      product: productId,
+      isMainVariant: false,
+    });
+  }
+
+  // Sync variante principal (main)
   if (mainVariantPayload) {
     const mainVariant = await ProductVariant.findOne({ product: productId, isMainVariant: true });
 
     if (mainVariant) {
+      const updateData = { ...mainVariantPayload };
+
       if (mainVariantPayload.price !== undefined && Number(mainVariantPayload.price) < Number(mainVariant.price)) {
-        mainVariant.previousPrice = mainVariant.price;
+        updateData.previousPrice = mainVariant.price;
       } else if (
         mainVariantPayload.price !== undefined &&
         Number(mainVariantPayload.price) >= Number(mainVariant.price)
       ) {
-        mainVariant.previousPrice = null;
+        updateData.previousPrice = null;
       }
 
       if (mainVariantPayload.onPromotion !== undefined)
-        mainVariant.onPromotion = Boolean(mainVariantPayload.onPromotion);
-      if (mainVariantPayload.salePrice !== undefined) mainVariant.salePrice = mainVariantPayload.salePrice;
+        updateData.onPromotion = Boolean(mainVariantPayload.onPromotion);
+      if (mainVariantPayload.salePrice !== undefined) updateData.salePrice = mainVariantPayload.salePrice;
       if (mainVariantPayload.discountPercent !== undefined)
-        mainVariant.discountPercent = mainVariantPayload.discountPercent;
+        updateData.discountPercent = mainVariantPayload.discountPercent;
 
-      Object.assign(mainVariant, mainVariantPayload, { isMainVariant: true, product: productId });
-      await mainVariant.save();
+      await ProductVariant.findByIdAndUpdate(mainVariant._id, updateData, { new: true });
     } else {
       await ProductVariant.create({
         ...mainVariantPayload,
@@ -200,14 +215,7 @@ const syncProductVariants = async (productId, mainVariantPayload, extraVariantsP
     }
   }
 
-  if (removeVariantIds.length > 0) {
-    await ProductVariant.deleteMany({
-      _id: { $in: removeVariantIds },
-      product: productId,
-      isMainVariant: false,
-    });
-  }
-
+  // Sync variantes extras
   for (const variantPayload of extraVariantsPayload) {
     if (variantPayload.variantId) {
       const existingVariant = await ProductVariant.findOne({
@@ -221,21 +229,22 @@ const syncProductVariants = async (productId, mainVariantPayload, extraVariantsP
       }
 
       const { variantId, ...variantData } = variantPayload;
+      const updateData = { ...variantData };
 
       if (variantData.price !== undefined) {
         if (Number(variantData.price) < Number(existingVariant.price)) {
-          existingVariant.previousPrice = existingVariant.price;
+          updateData.previousPrice = existingVariant.price;
         } else {
-          existingVariant.previousPrice = null;
+          updateData.previousPrice = null;
         }
       }
 
-      if (variantData.onPromotion !== undefined) existingVariant.onPromotion = Boolean(variantData.onPromotion);
-      if (variantData.salePrice !== undefined) existingVariant.salePrice = variantData.salePrice;
-      if (variantData.discountPercent !== undefined) existingVariant.discountPercent = variantData.discountPercent;
+      if (variantData.onPromotion !== undefined) updateData.onPromotion = Boolean(variantData.onPromotion);
+      if (variantData.salePrice !== undefined) updateData.salePrice = variantData.salePrice;
+      if (variantData.discountPercent !== undefined) updateData.discountPercent = variantData.discountPercent;
 
-      Object.assign(existingVariant, variantData, { product: productId, isMainVariant: false });
-      await existingVariant.save();
+      // Use findByIdAndUpdate to avoid unique constraint issues
+      await ProductVariant.findByIdAndUpdate(variantPayload.variantId, updateData, { new: true });
       continue;
     }
 
@@ -249,7 +258,7 @@ const syncProductVariants = async (productId, mainVariantPayload, extraVariantsP
   }
 };
 
-export const getVisibleProducts = async ({ categoryId, page, limit } = {}) => {
+export const getVisibleProducts = async ({ categoryId, search, page, limit } = {}) => {
   const pagination = normalizePagination({ page, limit });
   const activeStoreIds = await Store.find({ status: "active" }).distinct("_id");
 
@@ -264,6 +273,15 @@ export const getVisibleProducts = async ({ categoryId, page, limit } = {}) => {
 
   if (categoryId) {
     filters.category = categoryId;
+  }
+
+  if (search) {
+    const term = search.trim();
+    filters.$or = [
+      { name: { $regex: term, $options: "i" } },
+      { description: { $regex: term, $options: "i" } },
+      { "mainVariant.sku": { $regex: term, $options: "i" } },
+    ];
   }
 
   const skip = (pagination.page - 1) * pagination.limit;
@@ -445,7 +463,7 @@ export const findAnyStoreByOwnerOrThrow = async (ownerId) => {
 };
 
 export const updateStoreForOwner = async (ownerId, data) => {
-  const { name, description, logoUrl, bannerUrl, addressId } = data;
+  const { name, description, cnpj, logoUrl, bannerUrl, addressId, visibility } = data;
   const store = await findActiveStoreByOwnerOrThrow(ownerId);
 
   if (addressId !== undefined) {
@@ -454,8 +472,17 @@ export const updateStoreForOwner = async (ownerId, data) => {
   }
 
   if (description !== undefined) store.description = description;
+  if (cnpj !== undefined) store.cnpj = cnpj;
   if (logoUrl !== undefined) store.logoUrl = logoUrl;
   if (bannerUrl !== undefined) store.bannerUrl = bannerUrl;
+
+  if (visibility !== undefined) {
+    store.visibility = store.visibility || {};
+    if (visibility.showOwnerName !== undefined) store.visibility.showOwnerName = visibility.showOwnerName;
+    if (visibility.showVisitCount !== undefined) store.visibility.showVisitCount = visibility.showVisitCount;
+    if (visibility.showDescription !== undefined) store.visibility.showDescription = visibility.showDescription;
+    if (visibility.showLocation !== undefined) store.visibility.showLocation = visibility.showLocation;
+  }
 
   if (name && name !== store.name) {
     store.name = name;
@@ -469,15 +496,47 @@ export const updateStoreForOwner = async (ownerId, data) => {
     if (!slugSaved) {
       throw createHttpError("Não foi possível gerar um slug único para a loja", 409, undefined, "STORE_SLUG_CONFLICT");
     }
-
-    return store;
   }
 
-  if (description !== undefined || logoUrl !== undefined || bannerUrl !== undefined || addressId !== undefined) {
+  if (
+    description !== undefined ||
+    cnpj !== undefined ||
+    logoUrl !== undefined ||
+    bannerUrl !== undefined ||
+    addressId !== undefined ||
+    name !== undefined ||
+    visibility !== undefined
+  ) {
     await store.save();
   }
 
-  return store;
+  return populateStoreDetails(Store.findById(store._id));
+};
+
+export const updateStoreStatusForOwner = async (ownerId, status) => {
+  if (![accountStatuses.ACTIVE, accountStatuses.SUSPENDED].includes(status)) {
+    throw createHttpError("Status de loja inválido", 400, undefined, "STORE_STATUS_INVALID");
+  }
+
+  const store = await findAnyStoreByOwnerOrThrow(ownerId);
+
+  if (![accountStatuses.ACTIVE, accountStatuses.SUSPENDED].includes(store.status)) {
+    throw createHttpError(
+      "A loja não pode trocar de status neste momento",
+      403,
+      undefined,
+      "STORE_STATUS_CHANGE_FORBIDDEN",
+    );
+  }
+
+  if (store.status === status) {
+    return populateStoreDetails(Store.findById(store._id));
+  }
+
+  store.status = status;
+  await store.save();
+
+  return populateStoreDetails(Store.findById(store._id));
 };
 
 export const findExistingStoreOrThrow = async (storeId) => {
@@ -505,7 +564,7 @@ export const findActiveStoreByOwnerOrThrow = async (ownerId) => {
 };
 
 export const findStoreByIdOrThrow = async (storeId) => {
-  const store = await Store.findOne({ _id: storeId }).populate("owner", "name email role");
+  const store = await populateStoreDetails(Store.findOne({ _id: storeId }));
 
   if (!store) {
     throw createHttpError("Loja não encontrada", 404, undefined, "STORE_NOT_FOUND");

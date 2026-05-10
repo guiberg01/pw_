@@ -193,6 +193,16 @@ const bootstrap = async () => {
       },
     );
 
+    // Remove índice antigo do ProductVariant (sku único global) e cria novo (único por produto)
+    const productVariantCollection = mongoose.connection.db.collection("productvariants");
+    const pvIndexes = await productVariantCollection.indexes();
+    const oldSkuIndex = pvIndexes.find((index) => index?.name === "sku_1");
+
+    if (oldSkuIndex) {
+      console.log("Removendo índice antigo do ProductVariant: sku_1");
+      await productVariantCollection.dropIndex("sku_1");
+    }
+
     httpServer = app.listen(PORT, () => {
       console.log(`Server rodando em: http://localhost:${PORT}`);
     });

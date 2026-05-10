@@ -21,6 +21,9 @@ const productVariantSchema = z.object({
   length: z.number().min(0, "Comprimento deve ser maior ou igual a zero").optional().nullable(),
   width: z.number().min(0, "Largura deve ser maior ou igual a zero").optional().nullable(),
   height: z.number().min(0, "Altura deve ser maior ou igual a zero").optional().nullable(),
+  onPromotion: z.boolean().optional().default(false),
+  salePrice: z.number().min(0, "Preço promocional deve ser positivo").optional().nullable(),
+  discountPercent: z.number().min(0).max(100).optional().nullable(),
 });
 
 const productVariantUpdateSchema = z
@@ -41,6 +44,9 @@ const productVariantUpdateSchema = z
     length: z.number().min(0, "Comprimento deve ser maior ou igual a zero").optional().nullable(),
     width: z.number().min(0, "Largura deve ser maior ou igual a zero").optional().nullable(),
     height: z.number().min(0, "Altura deve ser maior ou igual a zero").optional().nullable(),
+    onPromotion: z.boolean().optional(),
+    salePrice: z.number().min(0, "Preço promocional deve ser positivo").optional().nullable(),
+    discountPercent: z.number().min(0).max(100).optional().nullable(),
   })
   .superRefine((data, ctx) => {
     const hasAnyField = Object.entries(data).some(([key, value]) => key !== "variantId" && value !== undefined);
@@ -164,4 +170,6 @@ export const productVariantIdParamSchema = z.object({
 
 export const productListQuerySchema = paginationQuerySchema.extend({
   categoryId: mongoIdSchema.optional(),
+  search: z.string().trim().min(1, "A busca deve ter ao menos 1 caractere").optional(),
+  status: z.enum(["active", "blocked"]).optional(),
 });

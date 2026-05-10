@@ -89,7 +89,7 @@ const productVariantSchema = new mongoose.Schema(
   { timestamps: true },
 );
 
-productVariantSchema.index({ sku: 1 }, { unique: true });
+productVariantSchema.index({ product: 1, sku: 1 }, { unique: true });
 productVariantSchema.index({ product: 1, stock: 1 });
 productVariantSchema.index(
   { product: 1, isMainVariant: 1 },

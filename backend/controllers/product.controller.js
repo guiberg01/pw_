@@ -23,8 +23,8 @@ export const getMyStoreProducts = async (req, res, next) => {
 };
 
 export const allProducts = async (req, res, next) => {
-  const { categoryId, page, limit } = req.validatedQuery ?? {};
-  const visibleProducts = await getVisibleProducts({ categoryId, page, limit });
+  const { categoryId, search, page, limit } = req.validatedQuery ?? {};
+  const visibleProducts = await getVisibleProducts({ categoryId, search, page, limit });
 
   return sendSuccess(res, 200, "Produtos listados com sucesso", visibleProducts);
 };
