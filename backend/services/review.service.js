@@ -324,19 +324,141 @@ export const listStoreProductReviews = async (actor, query = {}) => {
   const sort = getSort(query.sort);
 
   const productIds = await Product.find({ store: store._id }).distinct("_id");
+  const search = query.search?.trim();
 
-  const [items, total] = await Promise.all([
-    Review.find({ product: { $in: productIds } })
-      .sort(sort)
-      .skip(skip)
-      .limit(limit)
-      .populate("product", "name")
-      .populate("user", "name")
-      .lean(),
-    Review.countDocuments({ product: { $in: productIds } }),
+  const pipeline = [
+    { $match: { product: { $in: productIds } } },
+    {
+      $lookup: {
+        from: "products",
+        localField: "product",
+        foreignField: "_id",
+        as: "product",
+      },
+    },
+    { $unwind: "$product" },
+    {
+      $lookup: {
+        from: "users",
+        localField: "user",
+        foreignField: "_id",
+        as: "user",
+      },
+    },
+    { $unwind: "$user" },
+  ];
+
+  if (search) {
+    const regex = { $regex: search, $options: "i" };
+    pipeline.push({
+      $match: {
+        $or: [
+          { comment: regex },
+          { "sellerReply.comment": regex },
+          { "product.name": regex },
+          { "user.name": regex },
+          { "user.email": regex },
+        ],
+      },
+    });
+  }
+
+  const itemsPipeline = [{ $sort: sort }, { $skip: skip }, { $limit: limit }];
+
+  const [result] = await Review.aggregate([
+    ...pipeline,
+    {
+      $facet: {
+        items: [
+          ...itemsPipeline,
+          {
+            $project: {
+              _id: 1,
+              product: {
+                _id: "$product._id",
+                name: "$product.name",
+                mainImageUrl: "$product.mainImageUrl",
+              },
+              user: {
+                _id: "$user._id",
+                name: "$user.name",
+              },
+              subOrder: 1,
+              rating: 1,
+              comment: 1,
+              images: 1,
+              videos: 1,
+              sellerReply: 1,
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          },
+        ],
+        total: [{ $count: "value" }],
+        replyStats: [
+          {
+            $group: {
+              _id: null,
+              replied: {
+                $sum: {
+                  $cond: [{ $ifNull: ["$sellerReply.comment", false] }, 1, 0],
+                },
+              },
+              pending: {
+                $sum: {
+                  $cond: [{ $ifNull: ["$sellerReply.comment", false] }, 0, 1],
+                },
+              },
+            },
+          },
+        ],
+        breakdown: [
+          {
+            $group: {
+              _id: "$rating",
+              count: { $sum: 1 },
+            },
+          },
+        ],
+        average: [
+          {
+            $group: {
+              _id: null,
+              average: { $avg: "$rating" },
+            },
+          },
+        ],
+      },
+    },
   ]);
 
-  return buildPaginationResult({ items: items.map(serializeReview), total, page, limit });
+  const total = result?.total?.[0]?.value ?? 0;
+  const replyStats = result?.replyStats?.[0] ?? { replied: 0, pending: 0 };
+  const average = result?.average?.[0]?.average ?? 0;
+  const breakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+  for (const row of result?.breakdown ?? []) {
+    breakdown[row._id] = row.count;
+  }
+
+  return {
+    ...buildPaginationResult({
+      items: (result?.items ?? []).map((item) => ({
+        ...item,
+        sellerReply: item.sellerReply ?? { comment: null, repliedAt: null, editedAt: null },
+      })),
+      total,
+      page,
+      limit,
+    }),
+    summary: {
+      average: Math.round(Number(average || 0) * 100) / 100,
+      total,
+      replied: replyStats.replied ?? 0,
+      pending: replyStats.pending ?? 0,
+      breakdown,
+    },
+  };
 };
 
 export const upsertReviewReply = async (actor, reviewId, comment) => {

@@ -364,7 +364,7 @@ class ShippingService {
       .populate({ path: "order", populate: { path: "user", select: "email cpf" } })
       .populate({
         path: "store",
-        populate: [{ path: "address" }, { path: "owner", select: "_id email" }],
+        populate: [{ path: "address" }, { path: "owner", select: "_id email cpf" }],
       })
       .populate("shipping");
 
@@ -397,8 +397,10 @@ class ShippingService {
           : Number.isFinite(serviceIdFromQuote) && serviceIdFromQuote > 0
             ? serviceIdFromQuote
             : fallbackServiceId;
+    // Prefer CNPJ da loja; se ausente, tentar CPF do dono da loja como fallback
+    const senderFallbackDocument = store.owner?.cpf || null;
     const senderDocument = this.resolvePartyDocument({
-      document: store.cnpj,
+      document: store.cnpj || senderFallbackDocument,
       fieldLabel: "CNPJ/CPF do remetente",
       errorCode: "SHIPPING_SENDER_DOCUMENT_REQUIRED",
       orderId: order._id,
@@ -765,7 +767,12 @@ class ShippingService {
       orderStatus = orderStatuses.FAILED;
     } else if (
       statuses.some((s) =>
-        [subOrderStatuses.PAID, subOrderStatuses.PROCESSING, subOrderStatuses.SHIPPING, subOrderStatuses.DELIVERED].includes(s),
+        [
+          subOrderStatuses.PAID,
+          subOrderStatuses.PROCESSING,
+          subOrderStatuses.SHIPPING,
+          subOrderStatuses.DELIVERED,
+        ].includes(s),
       )
     ) {
       orderStatus = orderStatuses.PAID;
@@ -793,7 +800,9 @@ class ShippingService {
   }
 
   getServiceId(carrierName) {
-    const normalizedCarrierName = String(carrierName ?? "").trim().toUpperCase();
+    const normalizedCarrierName = String(carrierName ?? "")
+      .trim()
+      .toUpperCase();
     return MELHOR_ENVIO_CONFIG.carriers[normalizedCarrierName]?.id || 1;
   }
 

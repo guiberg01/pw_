@@ -23,6 +23,7 @@ export const productReviewParamSchema = z.object({
 
 export const productReviewListQuerySchema = paginationQuerySchema.extend({
   sort: z.enum(["newest", "oldest", "highest", "lowest"]).optional().default("newest"),
+  search: z.string().trim().min(1).optional(),
 });
 
 export const createReviewSchema = z.object({
