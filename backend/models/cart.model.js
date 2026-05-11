@@ -43,6 +43,10 @@ const cartSchema = new mongoose.Schema(
         type: Number,
         default: null,
       },
+      maxDiscountAmount: {
+        type: Number,
+        default: null,
+      },
     },
     items: {
       type: [cartItemSchema],

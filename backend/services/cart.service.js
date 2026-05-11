@@ -1,4 +1,6 @@
 import Cart from "../models/cart.model.js";
+import Coupon from "../models/coupon.model.js";
+import CouponUsage from "../models/couponUsage.model.js";
 import {
   calcCartTotals,
   ensureGuestCartId,
@@ -18,6 +20,7 @@ const MAX_VERSION_RETRIES = 3;
 const MAX_AUDIT_EVENTS = 50;
 
 const isAuthenticated = (req) => Boolean(req.user?._id);
+const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 
 const countCartItems = (items = []) => {
   return items.reduce((sum, item) => sum + Number(item.quantity ?? 0), 0);
@@ -58,15 +61,34 @@ const cartItemsEqual = (a = [], b = []) => {
   return true;
 };
 
+const couponsEqual = (a = {}, b = {}) => {
+  const couponA = {
+    couponId: a?.couponId?.toString?.() ?? a?.couponId ?? null,
+    code: a?.code ?? null,
+    discountType: a?.discountType ?? null,
+    discountValue: a?.discountValue ?? null,
+    maxDiscountAmount: a?.maxDiscountAmount ?? null,
+  };
+  const couponB = {
+    couponId: b?.couponId?.toString?.() ?? b?.couponId ?? null,
+    code: b?.code ?? null,
+    discountType: b?.discountType ?? null,
+    discountValue: b?.discountValue ?? null,
+    maxDiscountAmount: b?.maxDiscountAmount ?? null,
+  };
+
+  return JSON.stringify(couponA) === JSON.stringify(couponB);
+};
+
 const getCartTarget = async (req, res) => {
   if (isAuthenticated(req)) {
     const cart = await Cart.findOne({ user: req.user._id });
-    return { cart: cart ?? { items: [], auditTrail: [] } };
+    return { cart: cart ?? { items: [], auditTrail: [], appliedCoupon: null } };
   }
 
   const guestCartId = ensureGuestCartId(req, res);
   const guestCart = await readGuestCart(guestCartId);
-  return { cart: guestCart ?? { items: [], auditTrail: [] }, guestCartId };
+  return { cart: guestCart ?? { items: [], auditTrail: [], appliedCoupon: null }, guestCartId };
 };
 
 const toAuditEvents = (removedItems = []) =>
@@ -77,10 +99,124 @@ const toAuditEvents = (removedItems = []) =>
     quantity: Number(item.quantity ?? 0),
   }));
 
+const normalizeAppliedCouponSnapshot = (coupon) => {
+  if (!coupon) return null;
+
+  return {
+    couponId: coupon._id,
+    code: coupon.code,
+    discountType: coupon.discountType,
+    discountValue: Number(coupon.discountValue ?? 0),
+    maxDiscountAmount: coupon.maxDiscountAmount == null ? null : Number(coupon.maxDiscountAmount),
+  };
+};
+
+const resolveCartDiscount = ({ totalPrice, appliedCoupon }) => {
+  if (!appliedCoupon?.code || !appliedCoupon?.discountType) {
+    return {
+      discount: null,
+      finalTotal: totalPrice,
+    };
+  }
+
+  let discountAmount =
+    appliedCoupon.discountType === "percentage"
+      ? roundMoney((Number(totalPrice) * Number(appliedCoupon.discountValue ?? 0)) / 100)
+      : roundMoney(Number(appliedCoupon.discountValue ?? 0));
+
+  if (appliedCoupon.maxDiscountAmount != null) {
+    discountAmount = Math.min(discountAmount, Number(appliedCoupon.maxDiscountAmount));
+  }
+
+  discountAmount = Math.min(discountAmount, Number(totalPrice));
+  const finalTotal = roundMoney(Number(totalPrice) - Number(discountAmount));
+
+  return {
+    discount: {
+      code: appliedCoupon.code,
+      description:
+        appliedCoupon.discountType === "percentage"
+          ? `${Number(appliedCoupon.discountValue ?? 0)}% de desconto`
+          : `${roundMoney(Number(appliedCoupon.discountValue ?? 0)).toFixed(2)} de desconto`,
+      amount: roundMoney(discountAmount),
+    },
+    finalTotal,
+  };
+};
+
+const buildCouponCartContext = (hydratedItems = []) => {
+  return hydratedItems.map((item) => ({
+    productVariantId: item.productVariant._id.toString(),
+    productId: item.productVariant.product._id.toString(),
+    storeId: item.productVariant.product.store._id.toString(),
+    categoryIds: Array.isArray(item.productVariant.product.category)
+      ? item.productVariant.product.category.map((categoryId) => categoryId.toString())
+      : [],
+    unitPrice: Number(item.productVariant.price ?? 0),
+    quantity: Number(item.quantity ?? 0),
+  }));
+};
+
+const validateCouponForCartOrThrow = async ({ couponCode, hydratedItems, userId }) => {
+  const coupon = await Coupon.findOne({ code: couponCode, status: { $in: ["active", "sold-out"] } });
+
+  if (!coupon) {
+    throw createHttpError("Cupom inválido ou indisponível", 400, undefined, "CART_COUPON_INVALID");
+  }
+
+  if (coupon.expiresAt && coupon.expiresAt <= new Date()) {
+    throw createHttpError("Cupom expirado", 400, undefined, "CART_COUPON_EXPIRED");
+  }
+
+  if (coupon.maxUses != null && Number(coupon.usedCount ?? 0) >= Number(coupon.maxUses)) {
+    throw createHttpError("Cupom indisponível", 400, undefined, "CART_COUPON_SOLD_OUT");
+  }
+
+  const cartItems = buildCouponCartContext(hydratedItems);
+  const subTotal = roundMoney(cartItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0));
+
+  if (subTotal < Number(coupon.minOrderValue ?? 0)) {
+    throw createHttpError("Subtotal abaixo do mínimo para uso do cupom", 400, undefined, "CART_COUPON_MIN_ORDER");
+  }
+
+  if (userId && coupon.maxUsesPerUser != null) {
+    const userUsageCount = await CouponUsage.countDocuments({
+      coupon: coupon._id,
+      user: userId,
+      order: { $ne: null },
+    });
+
+    if (userUsageCount >= Number(coupon.maxUsesPerUser)) {
+      throw createHttpError("Limite de uso do cupom atingido", 400, undefined, "CART_COUPON_MAX_USES_PER_USER");
+    }
+  }
+
+  const productFilterSet = new Set((coupon.products ?? []).map((id) => id.toString()));
+  const storeFilterSet = new Set((coupon.stores ?? []).map((id) => id.toString()));
+  const categoryFilterSet = new Set((coupon.categories ?? []).map((id) => id.toString()));
+
+  const eligibleItems = cartItems.filter((item) => {
+    const inProductFilter = productFilterSet.size === 0 || productFilterSet.has(item.productId);
+    const inStoreFilter = storeFilterSet.size === 0 || storeFilterSet.has(item.storeId);
+    const inCategoryFilter =
+      categoryFilterSet.size === 0 || item.categoryIds.some((categoryId) => categoryFilterSet.has(categoryId));
+
+    return inProductFilter && inStoreFilter && inCategoryFilter;
+  });
+
+  if (eligibleItems.length === 0) {
+    throw createHttpError("Cupom não aplicável aos itens do carrinho", 400, undefined, "CART_COUPON_NOT_APPLICABLE");
+  }
+
+  return normalizeAppliedCouponSnapshot(coupon);
+};
+
 const buildCartResponse = async (req, target, items) => {
   const { hydratedItems, removedItems, sanitizedItems } = await hydrateCartItems(items);
   const { itemCount, totalPrice } = calcCartTotals(hydratedItems);
   const auditTrail = target.auditTrail ?? target.cart?.auditTrail ?? [];
+  const appliedCoupon = target.appliedCoupon ?? target.cart?.appliedCoupon ?? null;
+  const { discount, finalTotal } = resolveCartDiscount({ totalPrice, appliedCoupon });
 
   return {
     guestCartId: isAuthenticated(req) ? null : target.guestCartId,
@@ -88,6 +224,9 @@ const buildCartResponse = async (req, target, items) => {
     sanitizedItems,
     itemCount,
     totalPrice,
+    finalTotal,
+    discount,
+    appliedCoupon,
     removedItems: removedItems.length > 0 ? removedItems : null,
     auditTrail,
     lastUpdated: new Date().toISOString(),
@@ -129,10 +268,9 @@ export const addProductToCartForRequest = async (req, res, productId, quantity =
   });
 
   if (isAuthenticated(req) && previousItemCount === 0 && result.itemCount > 0) {
-    try{
+    try {
       await notifyCartReminderForUser(req.user._id, { itemCount: result.itemCount });
-    }
-    catch (error) {
+    } catch (error) {
       console.warn("Falha não-crítica ao enviar notificação de carrinho:", error.message ?? error);
     }
   }
@@ -172,19 +310,45 @@ export const removeProductFromCartForRequest = async (req, res, productId) => {
 };
 
 export const clearCartForRequest = async (req, res) => {
-  return mutateCartForRequest(req, res, () => []);
+  return mutateCartForRequest(req, res, () => [], { appliedCoupon: null });
 };
 
-export const mutateCartForRequest = async (req, res, mutator) => {
+export const applyCouponForRequest = async (req, res, couponCode) => {
+  const current = await getCartTarget(req, res);
+  const { hydratedItems } = await hydrateCartItems(current.cart.items ?? []);
+
+  if (hydratedItems.length === 0) {
+    throw createHttpError("Adicione itens ao carrinho para aplicar um cupom", 400, undefined, "CART_EMPTY");
+  }
+
+  const normalizedCode = String(couponCode ?? "")
+    .trim()
+    .toUpperCase();
+  const appliedCoupon = await validateCouponForCartOrThrow({
+    couponCode: normalizedCode,
+    hydratedItems,
+    userId: req.user?._id,
+  });
+
+  return mutateCartForRequest(req, res, (items) => items, { appliedCoupon });
+};
+
+export const removeCouponForRequest = async (req, res) => {
+  return mutateCartForRequest(req, res, (items) => items, { appliedCoupon: null });
+};
+
+export const mutateCartForRequest = async (req, res, mutator, { appliedCoupon: nextAppliedCoupon } = {}) => {
   if (isAuthenticated(req)) {
     return withVersionRetry(async () => {
       const cart = await findOrCreatePersistedCart(req.user._id);
       const currentItems = cart.items ?? [];
       const nextItems = await mutator(currentItems);
-      const response = await buildCartResponse(req, { auditTrail: cart.auditTrail ?? [] }, nextItems);
+      const appliedCoupon = nextAppliedCoupon === undefined ? (cart.appliedCoupon ?? null) : nextAppliedCoupon;
+      const response = await buildCartResponse(req, { auditTrail: cart.auditTrail ?? [], appliedCoupon }, nextItems);
       const auditEvents = toAuditEvents(response.removedItems ?? []);
 
       cart.items = response.sanitizedItems;
+      cart.appliedCoupon = response.appliedCoupon ?? null;
       cart.auditTrail = appendAuditTrail(cart.auditTrail ?? [], auditEvents);
       await cart.save();
 
@@ -196,12 +360,14 @@ export const mutateCartForRequest = async (req, res, mutator) => {
 
   const target = await getCartTarget(req, res);
   const nextItems = await mutator(target.cart.items ?? []);
-  const response = await buildCartResponse(req, target, nextItems);
+  const appliedCoupon = nextAppliedCoupon === undefined ? (target.cart.appliedCoupon ?? null) : nextAppliedCoupon;
+  const response = await buildCartResponse(req, { ...target, appliedCoupon }, nextItems);
   const auditEvents = toAuditEvents(response.removedItems ?? []);
   const nextAuditTrail = appendAuditTrail(target.cart.auditTrail ?? [], auditEvents);
 
   await writeGuestCart(target.guestCartId, {
     items: response.sanitizedItems,
+    appliedCoupon: response.appliedCoupon ?? null,
     auditTrail: nextAuditTrail,
   });
 
@@ -214,13 +380,19 @@ export const getCartForRequest = async (req, res) => {
   if (isAuthenticated(req)) {
     return withVersionRetry(async () => {
       const cart = await findOrCreatePersistedCart(req.user._id);
-      const response = await buildCartResponse(req, { auditTrail: cart.auditTrail ?? [] }, cart.items ?? []);
+      const response = await buildCartResponse(
+        req,
+        { auditTrail: cart.auditTrail ?? [], appliedCoupon: cart.appliedCoupon ?? null },
+        cart.items ?? [],
+      );
       const auditEvents = toAuditEvents(response.removedItems ?? []);
       const shouldPersistItems = !cartItemsEqual(cart.items ?? [], response.sanitizedItems);
       const shouldPersistAudit = auditEvents.length > 0;
+      const shouldPersistCoupon = !couponsEqual(cart.appliedCoupon ?? null, response.appliedCoupon ?? null);
 
-      if (shouldPersistItems || shouldPersistAudit) {
+      if (shouldPersistItems || shouldPersistAudit || shouldPersistCoupon) {
         cart.items = response.sanitizedItems;
+        cart.appliedCoupon = response.appliedCoupon ?? null;
         cart.auditTrail = appendAuditTrail(cart.auditTrail ?? [], auditEvents);
         await cart.save();
         response.auditTrail = cart.auditTrail;
@@ -237,10 +409,16 @@ export const getCartForRequest = async (req, res) => {
   const response = await buildCartResponse(req, target, target.cart.items ?? []);
   const auditEvents = toAuditEvents(response.removedItems ?? []);
   const nextAuditTrail = appendAuditTrail(target.cart.auditTrail ?? [], auditEvents);
+  const shouldPersistCoupon = !couponsEqual(target.cart.appliedCoupon ?? null, response.appliedCoupon ?? null);
 
-  if (!cartItemsEqual(target.cart.items ?? [], response.sanitizedItems) || auditEvents.length > 0) {
+  if (
+    !cartItemsEqual(target.cart.items ?? [], response.sanitizedItems) ||
+    auditEvents.length > 0 ||
+    shouldPersistCoupon
+  ) {
     await writeGuestCart(target.guestCartId, {
       items: response.sanitizedItems,
+      appliedCoupon: response.appliedCoupon ?? null,
       auditTrail: nextAuditTrail,
     });
   }

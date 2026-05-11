@@ -116,7 +116,7 @@ export const getProductOrThrow = async (productVariantId) => {
     path: "product",
     populate: {
       path: "store",
-      select: "status",
+      select: "status deletedAt",
     },
   });
 
@@ -124,7 +124,7 @@ export const getProductOrThrow = async (productVariantId) => {
     throw createHttpError("Produto não encontrado", 404);
   }
 
-  if (productVariant.product.deletedAt !== null || productVariant.product.store?.deletedAt !== null) {
+  if (productVariant.product.deletedAt != null || productVariant.product.store?.deletedAt != null) {
     throw createHttpError("Produto indisponível", 404);
   }
 
@@ -270,7 +270,7 @@ export const getMongoCart = async (userId) => {
     populate: [
       {
         path: "product",
-        select: "name basePrice mainImageUrl highlighted maxPerPerson status store",
+        select: "name basePrice mainImageUrl highlighted maxPerPerson status store category",
         populate: {
           path: "store",
           select: "name slug owner status",
