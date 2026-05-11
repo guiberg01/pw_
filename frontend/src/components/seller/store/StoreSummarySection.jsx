@@ -5,6 +5,7 @@ import Image from "next/image";
 import { Edit2, Eye, BookUser, Binoculars, List, MapPin, Store as StoreIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { normalizeImageSrc } from "@/lib/imageUtils";
 import {
   Dialog,
   DialogContent,
@@ -304,11 +305,10 @@ export default function StoreSummarySection({ store, onUpdated }) {
               <div className="flex h-28 items-center justify-center rounded-2xl border border-dashed border-slate-200 bg-slate-50">
                 {store?.logoUrl ? (
                   <Image
-                    src={store.logoUrl}
+                    src={normalizeImageSrc(store.logoUrl)}
                     alt={store.name || "Logo da loja"}
                     width={120}
                     height={120}
-                    unoptimized
                     className="h-24 w-24 rounded-xl object-cover"
                   />
                 ) : (
@@ -321,11 +321,10 @@ export default function StoreSummarySection({ store, onUpdated }) {
               <div className="flex h-28 items-center justify-center overflow-hidden rounded-2xl border border-dashed border-slate-200 bg-slate-50">
                 {store?.bannerUrl ? (
                   <Image
-                    src={store.bannerUrl}
+                    src={normalizeImageSrc(store.bannerUrl)}
                     alt={store.name || "Banner da loja"}
                     width={400}
                     height={160}
-                    unoptimized
                     className="h-full w-full object-cover"
                   />
                 ) : (

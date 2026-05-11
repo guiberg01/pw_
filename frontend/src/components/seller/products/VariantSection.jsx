@@ -7,6 +7,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { normalizeImageSrc } from "@/lib/imageUtils";
 import { formatCurrency } from "@/lib/utils";
 import { uploadService } from "@/services/uploadService";
 
@@ -123,7 +124,12 @@ export default function VariantSection({ variant, displayIndex, onUpdate, onRemo
             <div className="flex gap-3">
               {variant.imageUrl && (
                 <div className="relative h-24 w-24">
-                  <Image src={variant.imageUrl} alt="Variante" fill unoptimized className="rounded-lg object-cover" />
+                  <Image
+                    src={normalizeImageSrc(variant.imageUrl)}
+                    alt="Variante"
+                    fill
+                    className="rounded-lg object-cover"
+                  />
                 </div>
               )}
               <label className="flex flex-1 cursor-pointer flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 p-4 text-center transition-colors hover:border-slate-400">

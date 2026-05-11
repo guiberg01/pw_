@@ -6,6 +6,7 @@ import { Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Field, FieldLabel, FieldError } from "@/components/ui/field";
+import { normalizeImageSrc } from "@/lib/imageUtils";
 import {
   Dialog,
   DialogContent,
@@ -46,14 +47,7 @@ export default function BannerFormModal({
                     <FieldLabel htmlFor={field.name} className="font-medium text-slate-700">
                       Título
                     </FieldLabel>
-                    <Input
-                      {...field}
-                      id={field.name}
-                      placeholder="Frete grátis na semana"
-                      disabled={isSaving}
-                      aria-invalid={fieldState.invalid}
-                      className="border-slate-200 bg-slate-50 focus-visible:ring-2 focus-visible:ring-[#1a4f9c]"
-                    />
+                    <Input {...field} id={field.name} placeholder="Frete grátis na semana" disabled={isSaving} />
                     {fieldState.invalid && <FieldError errors={[fieldState.error]} />}
                   </Field>
                 )}
@@ -178,10 +172,9 @@ export default function BannerFormModal({
                         <p className="text-xs font-medium text-slate-600">Prévia do banner:</p>
                         <div className="relative aspect-16/7 overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
                           <Image
-                            src={field.value}
+                            src={normalizeImageSrc(field.value)}
                             alt="Prévia do banner"
                             fill
-                            unoptimized
                             className="object-cover"
                             sizes="(max-width: 768px) 100vw, 90vw"
                           />

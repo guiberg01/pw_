@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { storeDetailService } from "@/services/storeDetailService";
 import ProductListClient from "@/components/product/ProductListClient";
+import { normalizeImageSrc } from "@/lib/imageUtils";
 
 export default function StoreDetail() {
   const params = useParams();
@@ -23,7 +24,6 @@ export default function StoreDetail() {
       const storeResponse = await storeDetailService.getStoreById(storeId);
       setStoreData(storeResponse);
     } catch (error) {
-      toast.error(error?.response?.data?.message || "Falha ao carregar loja");
     } finally {
       setIsLoading(false);
     }
@@ -78,13 +78,15 @@ export default function StoreDetail() {
   const visibility = storeData?.visibility ?? {};
   const ownerName = storeData.owner?.name ?? "Vendedor";
   const rating = Number(storeData.reputation ?? 0).toFixed(1);
+  const bannerSrc = normalizeImageSrc(storeData.bannerUrl);
+  const logoSrc = normalizeImageSrc(storeData.logoUrl);
 
   return (
     <main className="min-h-[calc(100vh-5rem)] bg-slate-50">
       {/* Banner com overlay */}
       <div className="relative h-64 w-full overflow-hidden">
-        {storeData.bannerUrl ? (
-          <Image src={storeData.bannerUrl} alt={storeData.name} fill priority unoptimized className="object-cover" />
+        {bannerSrc ? (
+          <Image src={bannerSrc} alt={storeData.name} fill priority className="object-cover" />
         ) : (
           <div className="h-full w-full bg-linear-to-r from-indigo-500 to-blue-500" />
         )}
@@ -97,9 +99,9 @@ export default function StoreDetail() {
           <div className="mx-auto w-full max-w-6xl px-4 md:px-6">
             <div className="flex items-end gap-6">
               {/* Logo */}
-              {storeData.logoUrl && (
+              {logoSrc && (
                 <div className="relative h-24 w-24 shrink-0 overflow-hidden rounded-xl border-4 border-white shadow-xl">
-                  <Image src={storeData.logoUrl} alt={storeData.name} fill unoptimized className="object-cover" />
+                  <Image src={logoSrc} alt={storeData.name} fill className="object-cover" />
                 </div>
               )}
 
