@@ -25,7 +25,7 @@ export default async function Home() {
             <p className="text-[11px] font-bold uppercase tracking-[0.35em] text-blue-600">Marketplace</p>
             <h2 className="text-xl font-semibold text-slate-800 md:text-2xl">Destaques da TánaMão!</h2>
           </div>
-          <Link href="/produtos" className="text-blue-600 hover:underline text-sm font-medium">
+          <Link href="/products" className="text-blue-600 hover:underline text-sm font-medium">
             Ver tudo
           </Link>
         </div>
