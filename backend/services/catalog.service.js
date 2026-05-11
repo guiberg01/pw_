@@ -368,7 +368,7 @@ export const getProduct = async (productId) => {
 export const findProductVariantByIdOrThrow = async (variantId) => {
   const variant = await ProductVariant.findOne({ _id: variantId }).populate({
     path: "product",
-    select: "name description basePrice mainImageUrl highlighted maxPerPerson status store category",
+    select: "name description basePrice mainImageUrl highlighted purchaseCount maxPerPerson status store category",
     populate: [
       {
         path: "store",
