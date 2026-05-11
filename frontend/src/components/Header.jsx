@@ -4,7 +4,6 @@ import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search,
-  ShoppingCart,
   User,
   MapPin,
   Package,
@@ -15,12 +14,15 @@ import {
   Headset,
   LogOut,
   Plus,
+  Menu,
+  X,
 } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { api } from "@/api/api";
 import { removeFrontendCookie } from "@/utils/cookies";
 import { storeService } from "@/services/storeService";
 import Link from "next/link";
+import { CartButton } from "@/components/cart/CartButton";
 
 export function Header({
   initialLocation = "Descobrir sua região",
@@ -33,6 +35,9 @@ export function Header({
   const [location, setLocation] = useState(initialLocation);
   const [isLoading, setIsLoading] = useState(false);
   const [hasStore, setHasStore] = useState(null);
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [categories, setCategories] = useState([]);
+  const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
 
   const saveLocationCookie = (newLocation) => {
     const safeLocation = encodeURIComponent(newLocation);
@@ -104,6 +109,24 @@ export function Header({
     };
   }, [isUserLoggedIn]);
 
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      try {
+        const res = await fetch("/api/categories");
+        if (!res.ok) return;
+        const data = await res.json();
+        if (mounted) setCategories(Array.isArray(data) ? data : []);
+      } catch (e) {
+        // ignore
+      }
+    };
+    load();
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   const handleLocationClick = () => {
     setIsLoading(true);
 
@@ -151,49 +174,61 @@ export function Header({
   const firstLetter = userName ? userName.charAt(0).toUpperCase() : "U";
 
   return (
-    <header className="w-full bg-[#1a4f9c] py-3 px-4 shadow-md pt-5 text-white min-h-32.5">
-      <div className="max-w-7xl mx-auto flex flex-col gap-3">
-        <div className="flex justify-center items-center gap-4 lg:gap-8">
-          <Link href="/" className="font-extrabold text-2xl tracking-tighter shrink-0 flex items-center gap-1">
+    <header className="w-full bg-[#1a4f9c] px-4 py-3 pt-5 text-white shadow-md md:py-4">
+      <div className="mx-auto relative flex max-w-7xl flex-col gap-3">
+        <div className="flex justify-center lg:justify-start lg:absolute lg:left-3.75 lg:top-2.5">
+          <Link href="/" className="flex shrink-0 items-center gap-1 font-extrabold tracking-tighter md:text-2xl">
             <span className="text-white">Tána</span>
-            <span className="bg-yellow-400 text-blue-900 px-1 rounded-sm">Mão!</span>
+            <span className="rounded-sm bg-yellow-400 px-1 text-blue-900">Mão!</span>
           </Link>
+        </div>
 
-          <div className="relative flex-1 max-w-2xl">
+        <div className="flex items-center gap-2 min-h-12.5 lg:pl-40">
+          <div className="relative min-w-0 flex-1 lg:pr-3">
             <Input
-              className="w-full bg-white text-zinc-800 border-none shadow-inner h-9 pl-4 pr-10 focus-visible:ring-2 focus-visible:ring-yellow-400"
+              className="h-10 w-full border-none bg-white pl-4 pr-10 text-zinc-800 shadow-inner focus-visible:ring-2 focus-visible:ring-yellow-400"
               placeholder="O que você precisa hoje? Tá na mão!..."
             />
-            <div className="absolute right-3 top-2 text-zinc-400 border-l pl-2">
+            <div className="absolute right-3 lg:right-6 top-2.5 border-l pl-2 text-zinc-400">
               <Search size={20} />
             </div>
           </div>
 
-          {isUserLoggedIn ? (
-            <div className="hidden relative md:flex items-center gap-5 text-sm font-medium max-lg:after:-left-0.5 after:content-[''] after:absolute after:-left-2 after:w-px after:h-full after:bg-white/20">
-              <div className="relative group cursor-pointer flex items-center gap-2 pl-2">
-                <div className="bg-yellow-400 text-blue-900 font-extrabold w-9 h-9 rounded-full flex items-center justify-center shadow-inner transition-transform group-hover:scale-105">
+          <button
+            type="button"
+            onClick={() => setMobileMenuOpen((open) => !open)}
+            className="flex h-10 items-center gap-2 rounded-full bg-white/10 px-3 text-sm font-medium hover:bg-white/15 lg:hidden"
+            aria-expanded={mobileMenuOpen}
+            aria-label="Abrir menu"
+          >
+            {mobileMenuOpen ? <X size={16} /> : <Menu size={16} />}
+          </button>
+
+          <div className="hidden items-center gap-3 lg:flex">
+            {isUserLoggedIn ? (
+              <div className="relative group flex items-center gap-2 pl-2 text-sm font-medium">
+                <div className="flex h-9 w-9 items-center justify-center rounded-full bg-yellow-400 font-extrabold text-blue-900 shadow-inner transition-transform group-hover:scale-105">
                   {firstLetter}
                 </div>
 
-                <div className="flex items-center gap-1 hover:text-yellow-400 transition-colors">
+                <div className="flex items-center gap-1 transition-colors group-hover:text-yellow-400">
                   <span className="max-w-25 truncate font-bold">{userName}</span>
-                  <ChevronDown size={14} className="group-hover:rotate-180 transition-transform duration-200" />
+                  <ChevronDown size={14} className="transition-transform duration-200 group-hover:rotate-180" />
                 </div>
 
-                <div className="absolute top-full right-0 pt-3 w-56 opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50">
-                  <div className="absolute top-0 left-0 w-full h-3 bg-transparent"></div>
+                <div className="invisible absolute right-0 top-full z-50 w-56 pt-3 opacity-0 transition-all duration-200 group-hover:visible group-hover:opacity-100">
+                  <div className="absolute left-0 top-0 h-3 w-full bg-transparent" />
 
-                  <div className="bg-white rounded-lg shadow-xl border border-slate-100 text-slate-700 flex flex-col overflow-hidden">
-                    <div className="px-4 py-3 bg-slate-50 border-b border-slate-100 mb-1">
-                      <p className="text-xs text-slate-500 font-light">User: </p>
-                      <p className="text-sm font-bold text-slate-800 truncate">{userName}</p>
+                  <div className="flex flex-col overflow-hidden rounded-lg border border-slate-100 bg-white text-slate-700 shadow-xl">
+                    <div className="mb-1 border-b border-slate-100 bg-slate-50 px-4 py-3">
+                      <p className="text-xs font-light text-slate-500">User:</p>
+                      <p className="truncate text-sm font-bold text-slate-800">{userName}</p>
                     </div>
 
                     {hasStore && (
                       <Link
                         href="/seller"
-                        className="flex items-center gap-3 px-4 py-2.5 hover:bg-blue-50 hover:text-blue-600 transition-colors font-medium"
+                        className="flex items-center gap-3 px-4 py-2.5 font-medium transition-colors hover:bg-blue-50 hover:text-blue-600"
                       >
                         <Package size={16} className="text-slate-400" /> Minha Loja
                       </Link>
@@ -201,35 +236,42 @@ export function Header({
 
                     <Link
                       href="/perfil"
-                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 hover:text-blue-600 transition-colors"
+                      className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-slate-50 hover:text-blue-600"
                     >
                       <User size={16} className="text-slate-400" /> Perfil
                     </Link>
 
                     <Link
                       href="/pedidos"
-                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 hover:text-blue-600 transition-colors"
+                      className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-slate-50 hover:text-blue-600"
                     >
                       <Package size={16} className="text-slate-400" /> Pedidos
                     </Link>
 
                     <Link
                       href="/avaliacoes"
-                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 hover:text-blue-600 transition-colors"
+                      className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-slate-50 hover:text-blue-600"
                     >
                       <Star size={16} className="text-slate-400" /> Avaliações
                     </Link>
 
                     <Link
                       href="/favoritos"
-                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 hover:text-blue-600 transition-colors"
+                      className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-slate-50 hover:text-blue-600"
                     >
                       <Heart size={16} className="text-slate-400" /> Favoritos
                     </Link>
 
                     <Link
+                      href="/notificacoes"
+                      className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-slate-50 hover:text-blue-600"
+                    >
+                      <Bell size={16} className="text-slate-400" /> Notificações
+                    </Link>
+
+                    <Link
                       href="/suporte"
-                      className="flex items-center gap-3 px-4 py-2.5 hover:bg-slate-50 hover:text-blue-600 transition-colors"
+                      className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-slate-50 hover:text-blue-600"
                     >
                       <Headset size={16} className="text-slate-400" /> Suporte
                     </Link>
@@ -238,138 +280,228 @@ export function Header({
 
                     <button
                       onClick={handleLogout}
-                      className="flex cursor-pointer items-center gap-3 px-4 py-2.5 hover:bg-red-50 text-red-600 w-full text-left transition-colors font-medium"
+                      className="flex w-full cursor-pointer items-center gap-3 px-4 py-2.5 text-left font-medium text-red-600 transition-colors hover:bg-red-50"
                     >
                       <LogOut size={16} /> Deslogar
                     </button>
                   </div>
                 </div>
               </div>
+            ) : (
+              <div className="flex items-center gap-3 text-sm font-medium">
+                <Link href="/login" className="flex items-center gap-2 transition-colors hover:text-yellow-400">
+                  <div className="rounded-full bg-white/20 p-2">
+                    <User size={18} />
+                  </div>
+                  <span>Olá, entre aqui!</span>
+                </Link>
 
-              <Link href="#" className="relative hover:text-yellow-400 transition-colors">
-                <ShoppingCart size={24} />
-                <span className="absolute -top-1 -right-2 bg-yellow-400 text-blue-900 text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-[#1a4f9c]">
-                  0
-                </span>
-              </Link>
-
-              <button className="relative hover:text-yellow-400 transition-colors cursor-pointer">
-                <Bell size={22} className="animate-pulse" />
-                <span className="absolute -top-1 -right-2 bg-yellow-400 text-blue-900 text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-[#1a4f9c]">
-                  0
-                </span>
-              </button>
-            </div>
-          ) : (
-            <div className="hidden relative md:flex items-center gap-5 text-sm font-medium max-lg:after:-left-2 after:content-[''] after:absolute after:-left-3 after:w-px after:h-9 after:bg-white/20">
-              <Link href="/login" className="flex items-center gap-2 hover:text-yellow-400 transition-colors">
-                <div className="bg-white/20 p-2 rounded-full">
-                  <User size={18} />
-                </div>
-                <span>Olá, entre aqui!</span>
-              </Link>
-
-              <Link
-                href="/signup"
-                className="relative group hover:text-yellow-400 transition-colors cursor-pointer flex items-center gap-1 p-2 rounded-md"
-              >
-                <div className="bg-white/20 p-2 rounded-full">
-                  <Plus size={18} />
-                </div>
-                <div className="grid place-items-start">
-                  <span className="text-[11px]">Novo aqui?</span>
-                  <span className=" bg-yellow-400 transition-colors text-blue-900 text-[10px] font-bold rounded-2xl px-1.5 py-0.5 group-hover:bg-blue-900 group-hover:text-yellow-400">
-                    Crie sua Conta
-                  </span>
-                </div>
-              </Link>
-
-              <Link href="#" className="relative hover:text-yellow-400 transition-colors">
-                <ShoppingCart size={24} />
-                <span className="absolute -top-1 -right-2 bg-yellow-400 text-blue-900 text-[10px] font-bold rounded-full w-5 h-5 flex items-center justify-center border-2 border-[#1a4f9c]">
-                  0
-                </span>
-              </Link>
-            </div>
-          )}
+                <Link
+                  href="/signup"
+                  className="relative flex items-center gap-1 rounded-md px-2 py-2 transition-colors hover:text-yellow-400"
+                >
+                  <div className="rounded-full bg-white/20 p-2">
+                    <Plus size={18} />
+                  </div>
+                  <div className="grid place-items-start">
+                    <span className="text-[11px]">Novo aqui?</span>
+                    <span className="rounded-2xl bg-yellow-400 px-1.5 py-0.5 text-[10px] font-bold text-blue-900 transition-colors group-hover:bg-blue-900 group-hover:text-yellow-400">
+                      Crie sua Conta
+                    </span>
+                  </div>
+                </Link>
+              </div>
+            )}
+          </div>
+          <div className="shrink-0">
+            <CartButton />
+          </div>
         </div>
 
-        <div className="flex items-center justify-between text-xs lg:text-sm font-light text-blue-50/90">
-          <div className="flex items-center gap-6">
-            <button
-              onClick={handleLocationClick}
-              disabled={isLoading}
-              className="flex items-center cursor-pointer gap-1 text-white font-medium bg-blue-800/40 px-3 py-1 rounded-full border border-blue-400/30 hover:bg-blue-700/60 transition-all active:scale-95 disabled:opacity-50"
+        <div
+          className={`fixed inset-0 z-50 overflow-hidden transition-opacity duration-300 lg:hidden ${
+            mobileMenuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
+          }`}
+          aria-hidden={!mobileMenuOpen}
+        >
+          <div
+            className={`absolute inset-0 bg-black/20 transition-opacity duration-300 ${
+              mobileMenuOpen ? "opacity-100" : "opacity-0"
+            }`}
+            onClick={() => setMobileMenuOpen(false)}
+          />
+
+          <div className="pointer-events-none absolute inset-y-0 right-0 flex max-w-full pl-4">
+            <div
+              className={`pointer-events-auto w-screen max-w-sm transform transition-transform duration-300 ease-in-out ${
+                mobileMenuOpen ? "translate-x-0" : "translate-x-full"
+              }`}
             >
-              <MapPin size={14} className={`${isLoading ? "animate-bounce" : ""} text-yellow-400`} />
-              <span>{isLoading ? "Buscando..." : location}</span>
-            </button>
-            <nav className="flex gap-4 md:gap-6 items-center">
-              <div className="relative group">
-                <button className="flex items-center gap-1 hover:text-yellow-400 hover:underline group-hover:text-yellow-400 py-2">
-                  Categorias
-                  <ChevronDown size={14} className="group-hover:rotate-180 transition-transform duration-200" />
-                </button>
+              <div className="flex h-full flex-col bg-white text-slate-900 shadow-xl">
+                <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+                  <h3 className="text-lg font-semibold">Menu</h3>
+                  <button onClick={() => setMobileMenuOpen(false)} className="rounded-md p-1 text-slate-600">
+                    <X className="h-5 w-5" />
+                  </button>
+                </div>
 
-                <div className="absolute top-full left-0 w-60 bg-white rounded-md shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-200 z-50 text-slate-700 border border-slate-200 origin-top-left">
-                  <div className="absolute -top-2 left-0 w-full h-2 bg-transparent"></div>
+                <div className="flex-1 overflow-y-auto px-4 py-4">
+                  <nav className="grid gap-2">
+                    {isUserLoggedIn ? (
+                      <>
+                        <Link
+                          href="/perfil"
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="block rounded-lg px-3 py-2 hover:bg-slate-50"
+                        >
+                          Perfil
+                        </Link>
+                        <Link
+                          href="/pedidos"
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="block rounded-lg px-3 py-2 hover:bg-slate-50"
+                        >
+                          Pedidos
+                        </Link>
+                        <Link
+                          href="/avaliacoes"
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="block rounded-lg px-3 py-2 hover:bg-slate-50"
+                        >
+                          Avaliações
+                        </Link>
+                        <Link
+                          href="/favoritos"
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="block rounded-lg px-3 py-2 hover:bg-slate-50"
+                        >
+                          Favoritos
+                        </Link>
+                        <Link
+                          href="/suporte"
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="block rounded-lg px-3 py-2 hover:bg-slate-50"
+                        >
+                          Suporte
+                        </Link>
+                        <button
+                          onClick={handleLogout}
+                          className="w-full rounded-lg bg-rose-50 px-3 py-2 text-left text-rose-600"
+                        >
+                          Deslogar
+                        </button>
+                      </>
+                    ) : (
+                      <>
+                        <Link
+                          href="/login"
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="block rounded-lg px-3 py-2 hover:bg-slate-50"
+                        >
+                          Entrar
+                        </Link>
+                        <Link
+                          href="/signup"
+                          onClick={() => setMobileMenuOpen(false)}
+                          className="block rounded-lg px-3 py-2 hover:bg-slate-50"
+                        >
+                          Criar conta
+                        </Link>
+                      </>
+                    )}
 
-                  <div className="py-2 flex flex-col">
-                    <Link
-                      href="/categorias/informatica"
-                      className="px-4 py-2 hover:bg-slate-50 hover:text-blue-600 transition-colors font-medium"
-                    >
-                      Informática & PC Gamer
-                    </Link>
-                    <Link
-                      href="/categorias/eletronicos"
-                      className="px-4 py-2 hover:bg-slate-50 hover:text-blue-600 transition-colors font-medium"
-                    >
-                      Eletrônicos & Componentes
-                    </Link>
-                    <Link
-                      href="/categorias/games"
-                      className="px-4 py-2 hover:bg-slate-50 hover:text-blue-600 transition-colors font-medium"
-                    >
-                      Games & Consoles
-                    </Link>
-                    <Link
-                      href="/categorias/iot"
-                      className="px-4 py-2 hover:bg-slate-50 hover:text-blue-600 transition-colors font-medium"
-                    >
-                      Casa Inteligente & IoT
-                    </Link>
-                    <Link
-                      href="/categorias/ferramentas"
-                      className="px-4 py-2 hover:bg-slate-50 hover:text-blue-600 transition-colors font-medium"
-                    >
-                      Ferramentas & Construção
-                    </Link>
-                    <hr className="my-1 border-slate-100" />
-                    <Link
-                      href="/categorias"
-                      className="px-4 py-2 hover:bg-slate-50 text-blue-600 transition-colors font-bold text-xs uppercase tracking-wider"
-                    >
-                      Ver todas as categorias
-                    </Link>
-                  </div>
+                    <div className="mt-2 border-t border-slate-100 pt-3">
+                      <h4 className="mb-2 px-1 text-sm font-medium">Categorias</h4>
+                      <div className="grid gap-1">
+                        {categories && categories.length > 0 ? (
+                          categories.map((cat) => (
+                            <Link
+                              key={cat._id || cat.id || cat.slug}
+                              href={cat.slug ? `/categorias/${cat.slug}` : `/categorias?id=${cat._id || cat.id}`}
+                              onClick={() => setMobileMenuOpen(false)}
+                              className="block rounded px-2 py-2 hover:bg-slate-50"
+                            >
+                              {cat.name}
+                            </Link>
+                          ))
+                        ) : (
+                          <p className="text-sm text-slate-500">Nenhuma categoria</p>
+                        )}
+                      </div>
+                    </div>
+                  </nav>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
 
-              <Link href="/ofertas" className="hover:text-white hover:underline py-2">
-                Ofertas do Dia
-              </Link>
-              <Link href="/mais-vendidos" className="hover:text-white hover:underline py-2">
-                Mais Vendidos
-              </Link>
-            </nav>
+        <div className="flex flex-wrap items-center gap-2 text-xs font-light text-blue-50/90 md:text-sm">
+          <button
+            onClick={handleLocationClick}
+            disabled={isLoading}
+            className="hidden items-center gap-1 rounded-full border border-blue-400/30 bg-blue-800/40 px-3 py-1.5 text-white font-medium transition-all hover:bg-blue-700/60 active:scale-95 disabled:opacity-50 sm:inline-flex"
+          >
+            <MapPin size={14} className={`${isLoading ? "animate-bounce" : ""} text-yellow-400`} />
+            <span>{isLoading ? "Buscando..." : location}</span>
+          </button>
+
+          <div className="relative hidden sm:inline-block">
+            <button
+              type="button"
+              onMouseEnter={() => setIsCategoriesOpen(true)}
+              onMouseLeave={() => setIsCategoriesOpen(false)}
+              className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 font-medium text-white hover:bg-white/15"
+              aria-expanded={isCategoriesOpen}
+            >
+              <ChevronDown size={14} />
+              Categorias
+            </button>
+
+            <div
+              onMouseEnter={() => setIsCategoriesOpen(true)}
+              onMouseLeave={() => setIsCategoriesOpen(false)}
+              className={`absolute left-0 z-2000 mt-2 w-56 rounded-lg bg-white text-slate-800 shadow-lg border border-slate-100 transition-opacity ${
+                isCategoriesOpen ? "visible opacity-100" : "invisible opacity-0"
+              }`}
+            >
+              <div className="p-2">
+                {categories && categories.length > 0 ? (
+                  categories.map((cat) => (
+                    <Link
+                      key={cat._id || cat.id || cat.slug}
+                      href={cat.slug ? `/categorias/${cat.slug}` : `/categorias?id=${cat._id || cat.id}`}
+                      className="block rounded px-3 py-2 text-sm hover:bg-slate-50"
+                    >
+                      {cat.name}
+                    </Link>
+                  ))
+                ) : (
+                  <div className="px-3 py-2 text-sm text-slate-500">Nenhuma categoria</div>
+                )}
+              </div>
+            </div>
           </div>
 
           <Link
-            href={hasStore ? "/seller" : "/seller/onboarding"}
-            className="hidden sm:flex items-center gap-1 hover:text-white hover:underline"
+            href="/ofertas"
+            className="hidden items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 font-medium text-white hover:bg-white/15 sm:inline-flex"
           >
-            <Package size={16} />
+            Ofertas do Dia
+          </Link>
+
+          <Link
+            href="/mais-vendidos"
+            className="hidden items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 font-medium text-white hover:bg-white/15 md:inline-flex"
+          >
+            Mais Vendidos
+          </Link>
+
+          <Link
+            href={hasStore ? "/seller" : "/seller/onboarding"}
+            className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 font-medium text-white hover:bg-white/15"
+          >
+            <Package size={14} />
             {hasStore ? "Ver minha loja" : "Seja um vendedor"}
           </Link>
         </div>
