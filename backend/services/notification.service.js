@@ -223,13 +223,15 @@ export const notifyOrderPaid = async (orderId) => {
     title: "Pagamento confirmado",
     message: `Seu pedido #${order._id.toString().slice(-6)} foi confirmado e está em preparação.`,
     type: "order_status",
-    recipientRole: "customer",
+    recipientRole: "everyone",
     actionUrl: `/orders/${order._id}`,
     refModel: { refId: order._id, refModel: "Order" },
   });
 
   const storeIds = [...new Set(subOrders.map((subOrder) => String(subOrder.store)))];
-  const stores = await Store.find({ _id: { $in: storeIds } }).select("_id owner name").lean();
+  const stores = await Store.find({ _id: { $in: storeIds } })
+    .select("_id owner name")
+    .lean();
 
   await createNotificationsForUsers(
     stores.map((store) => store.owner),
@@ -249,7 +251,7 @@ export const notifyOrderStatusForCustomer = async ({ orderId, userId, status }) 
     title: "Atualização no pedido",
     message: `Seu pedido #${String(orderId).slice(-6)} mudou para: ${status}.`,
     type: "order_status",
-    recipientRole: "customer",
+    recipientRole: "everyone",
     actionUrl: `/orders/${orderId}`,
     refModel: { refId: orderId, refModel: "Order" },
     metadata: { status },
@@ -265,14 +267,16 @@ export const notifyOrderFailedOrCancelled = async ({ orderId }) => {
   if (!order) return;
 
   const sellerStoreIds = [...new Set(subOrders.map((subOrder) => String(subOrder.store)))];
-  const stores = await Store.find({ _id: { $in: sellerStoreIds } }).select("owner").lean();
+  const stores = await Store.find({ _id: { $in: sellerStoreIds } })
+    .select("owner")
+    .lean();
 
   await Promise.all([
     createNotificationForUser(order.user, {
       title: "Pedido não concluído",
       message: `Houve um problema com o pedido #${order._id.toString().slice(-6)}.`,
       type: "order_cancelled",
-      recipientRole: "customer",
+      recipientRole: "everyone",
       actionUrl: `/orders/${order._id}`,
       refModel: { refId: order._id, refModel: "Order" },
       metadata: { status: order.status },
@@ -297,7 +301,7 @@ export const notifyRefundEvent = async ({ orderId, userId, sellerIds = [] }) => 
       title: "Reembolso atualizado",
       message: `O reembolso do pedido #${String(orderId).slice(-6)} foi atualizado.`,
       type: "refund",
-      recipientRole: "customer",
+      recipientRole: "everyone",
       actionUrl: `/orders/${orderId}`,
       refModel: { refId: orderId, refModel: "Order" },
     }),
@@ -335,7 +339,7 @@ export const notifyReviewReplyForCustomer = async ({ userId, reviewId, productId
     title: "Resposta do vendedor",
     message: "O vendedor respondeu sua review.",
     type: "seller_reply",
-    recipientRole: "customer",
+    recipientRole: "everyone",
     actionUrl: `/products/${productId}`,
     refModel: { refId: reviewId, refModel: "Review" },
     metadata: { productId },
@@ -349,7 +353,7 @@ export const notifyNewCouponForCustomers = async (coupon) => {
     title: "Novo cupom disponível",
     message: `Novo cupom: ${coupon.code}. Aproveite antes de expirar!`,
     type: "coupon_new",
-    recipientRole: "customer",
+    recipientRole: "everyone",
     actionUrl: "/coupons",
     refModel: { refId: coupon._id, refModel: "Coupon" },
     metadata: {
@@ -391,7 +395,7 @@ export const notifyCouponsExpiringSoon = async () => {
       title: "Cupom perto de expirar",
       message: `O cupom ${coupon.code} está perto de expirar.`,
       type: "coupon_expiring",
-      recipientRole: "customer",
+      recipientRole: "everyone",
       actionUrl: "/coupons",
       refModel: { refId: coupon._id, refModel: "Coupon" },
       metadata: { code: coupon.code, expiresAt: coupon.expiresAt },
@@ -413,7 +417,7 @@ export const notifyProductDiscountForCustomers = async ({ productId, oldPrice, n
     title: "Produto com desconto",
     message: `Um produto caiu de R$ ${Number(oldPrice).toFixed(2)} para R$ ${Number(newPrice).toFixed(2)}.`,
     type: "product_discount",
-    recipientRole: "customer",
+    recipientRole: "everyone",
     actionUrl: `/products/${productId}`,
     refModel: { refId: productId, refModel: "Product" },
     metadata: { oldPrice, newPrice },
@@ -427,7 +431,7 @@ export const notifyPromotionForCustomers = async ({ productId, productName }) =>
     title: "Nova promoção",
     message: `${productName} entrou em destaque promocional.`,
     type: "promotion",
-    recipientRole: "customer",
+    recipientRole: "everyone",
     actionUrl: `/products/${productId}`,
     refModel: { refId: productId, refModel: "Product" },
   });
@@ -445,7 +449,7 @@ export const notifyCartReminderForUser = async (userId, { itemCount }) => {
     title: "Finalize sua compra",
     message: `Você tem ${itemCount} item(ns) no carrinho esperando por você.`,
     type: "cart_reminder",
-    recipientRole: "customer",
+    recipientRole: "everyone",
     actionUrl: "/cart",
     refModel: { refId: null, refModel: null },
     metadata: { itemCount },

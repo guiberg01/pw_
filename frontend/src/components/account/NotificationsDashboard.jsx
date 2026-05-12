@@ -119,7 +119,7 @@ export default function NotificationsDashboard() {
       return;
     }
 
-    await loadNotifications();
+    await loadNotificationsRef.current?.();
   };
 
   const handleMarkAllRead = async () => {
