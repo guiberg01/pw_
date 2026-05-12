@@ -1,12 +1,14 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { AddToCartButton } from "@/components/cart/AddToCartButton";
 import { formatCurrency } from "@/lib/formatters";
 import { normalizeImageSrc } from "@/lib/imageUtils";
+import { favoriteService } from "@/services/favoriteService";
+import { toast } from "sonner";
 import { Heart, Share2, Star, Zap } from "lucide-react";
 
 const getVariantLabel = (variant) => {
@@ -21,10 +23,13 @@ export function ProductDetailsClient({ product }) {
     () => [product.mainVariant, ...(product.productVariants ?? [])].filter(Boolean),
     [product.mainVariant, product.productVariants],
   );
+  const [isFavorite, setIsFavorite] = useState(false);
+  const [isFavoriteLoading, setIsFavoriteLoading] = useState(false);
   const [selectedId, setSelectedId] = useState(variants[0]?._id ?? null);
 
   const selectedVariant = variants.find((variant) => variant._id === selectedId) || variants[0] || null;
   const imageUrl = selectedVariant?.imageUrl || product.mainImageUrl || "/placeholder-product.png";
+  const favoriteButtonLabel = isFavorite ? "Remover dos favoritos" : "Adicionar aos favoritos";
   const normalizedImageUrl = normalizeImageSrc(imageUrl);
   const stock = Number(selectedVariant?.stock ?? 0);
   const price = Number(selectedVariant?.price ?? product.basePrice ?? 0);
@@ -44,10 +49,48 @@ export function ProductDetailsClient({ product }) {
     ([, value]) => value != null && value !== "",
   );
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadFavoriteState = async () => {
+      try {
+        const data = await favoriteService.getMyFavorites({ limit: 100 });
+        if (!mounted) return;
+
+        const favorites = data?.items ?? [];
+        setIsFavorite(
+          favorites.some((favorite) => String(favorite?.product?._id ?? favorite?.product?.id) === String(product._id)),
+        );
+      } catch (error) {
+        if (!mounted) return;
+      }
+    };
+
+    loadFavoriteState();
+
+    return () => {
+      mounted = false;
+    };
+  }, [product._id]);
+
   const handleBuyNow = (e) => {
     e.preventDefault();
     const variantId = selectedVariant?._id || product.mainVariant?._id || product._id;
     router.push(`/checkout?productId=${variantId}&quantity=1`);
+  };
+
+  const handleToggleFavorite = async () => {
+    try {
+      setIsFavoriteLoading(true);
+      const result = await favoriteService.toggleFavorite(product._id);
+      setIsFavorite(Boolean(result?.isFavorited));
+      toast.success(result?.isFavorited ? "Produto adicionado aos favoritos" : "Produto removido dos favoritos");
+    } catch (error) {
+      const message = error?.response?.data?.message || "Não foi possível atualizar seus favoritos.";
+      toast.error(message);
+    } finally {
+      setIsFavoriteLoading(false);
+    }
   };
 
   return (
@@ -93,8 +136,16 @@ export function ProductDetailsClient({ product }) {
               <div className="bg-white rounded-lg overflow-hidden border border-slate-200 aspect-square relative">
                 <Image src={normalizedImageUrl} alt={product.name} fill className="object-cover" priority />
                 <div className="flex gap-2 items-top justify-end absolute top-4 right-4">
-                  <button className="flex items-center gap-2 px-3 py-2 border backdrop-blur-sm border-slate-300 rounded-lg hover:bg-slate-50 text-[12px] font-medium">
-                    <Heart title="Adicionar aos favoritos" className="h-4 w-4 " />
+                  <button
+                    type="button"
+                    onClick={() => void handleToggleFavorite()}
+                    disabled={isFavoriteLoading}
+                    className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-[12px] font-medium backdrop-blur-sm transition ${
+                      isFavorite ? "border-rose-300 bg-rose-50 text-rose-700" : "border-slate-300 hover:bg-slate-50"
+                    } ${isFavoriteLoading ? "cursor-not-allowed opacity-70" : ""}`}
+                    title={favoriteButtonLabel}
+                  >
+                    <Heart className={`h-4 w-4 ${isFavorite ? "fill-current" : ""}`} />
                   </button>
                   <button className="flex items-center gap-2 px-3 backdrop-blur-sm py-2 transition border border-slate-300 rounded-lg hover:bg-slate-50 text-[12px] font-medium">
                     <Share2 title="Compartilhar" className="h-4 w-4" />

@@ -78,7 +78,7 @@ export default function FavoritesDashboard() {
     await favoriteService.removeFavorite(removingFavorite.product._id);
     toast.success("Produto removido dos favoritos");
     setRemovingFavorite(null);
-    await loadFavorites();
+    await loadFavoritesRef.current?.();
   };
 
   return (
