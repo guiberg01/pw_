@@ -30,6 +30,7 @@ import notificationRoutes from "./routes/notification.route.js";
 import messageRoutes from "./routes/message.route.js";
 import supportRoutes from "./routes/support.route.js";
 import bannerRoutes from "./routes/banner.route.js";
+import favoriteRoutes from "./routes/favorite.route.js";
 
 import { connectDB, disconnectDB } from "./config/db.js";
 import { disconnectRedis } from "./config/redis.js";
@@ -158,6 +159,7 @@ app.use("/api/notifications", notificationRoutes);
 app.use("/api/messages", messageRoutes);
 app.use("/api/support", supportRoutes);
 app.use("/api/banners", bannerRoutes);
+app.use("/api/favorites", favoriteRoutes);
 
 app.use((req, res, next) => {
   next(createHttpError("Rota não encontrada", 404, undefined, "ROUTE_NOT_FOUND"));
