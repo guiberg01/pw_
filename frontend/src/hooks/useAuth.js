@@ -44,6 +44,9 @@ export function useLogin(options = {}) {
 
       router.push(redirectTo);
       router.refresh();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("cart:updated"));
+      }
     } catch (error) {
       const serverMessage = error.response?.data?.message;
       const genericMessage = "E-mail ou senha incorretos. Tente novamente.";
@@ -102,6 +105,9 @@ export function useSignup(options = {}) {
 
       router.push(redirectTo);
       router.refresh();
+      if (typeof window !== "undefined") {
+        window.dispatchEvent(new Event("cart:updated"));
+      }
     } catch (error) {
       const serverMessage = error.response?.data?.message;
       const genericMessage = "O cadastro falhou... Tente novamente.";

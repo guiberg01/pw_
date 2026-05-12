@@ -37,7 +37,7 @@ export default async function RootLayout({ children }) {
 
   return (
     <html lang="en" className={`${inter.variable} ${poppins.variable}`}>
-      <body className="min-h-full flex flex-col">
+      <body className="min-h-screen flex flex-col">
         <Header
           initialLocation={initialLocation}
           isUserLoggedIn={isUserLoggedIn}

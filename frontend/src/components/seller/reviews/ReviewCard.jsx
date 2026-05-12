@@ -3,6 +3,7 @@
 import Image from "next/image";
 import { Button } from "@/components/ui/button";
 import { formatCurrency } from "@/lib/utils";
+import { normalizeImageSrc } from "@/lib/imageUtils";
 
 const RatingStars = ({ rating }) => {
   const filled = Math.round(Number(rating || 0));
@@ -39,10 +40,9 @@ export default function ReviewCard({ review, onReply, onDeleteReply }) {
         <div className="relative h-52 bg-slate-50 lg:h-full">
           {review?.product?.mainImageUrl ? (
             <Image
-              src={review.product.mainImageUrl}
+              src={normalizeImageSrc(review.product.mainImageUrl)}
               alt={review.product?.name || "Produto"}
               fill
-              unoptimized
               className="object-cover"
             />
           ) : (

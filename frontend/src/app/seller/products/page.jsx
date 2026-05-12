@@ -13,6 +13,7 @@ import { Input } from "@/components/ui/input";
 import { categoryService } from "@/services/categoryService";
 import { storeService } from "@/services/storeService";
 import { formatCurrency } from "@/lib/utils";
+import { normalizeImageSrc } from "@/lib/imageUtils";
 
 const formatDate = (value) => {
   if (!value) return "—";
@@ -89,7 +90,12 @@ const ProductCard = ({ product, onEdit, onDelete, onRefresh }) => {
         {/* Imagem */}
         <div className="relative h-full min-h-35 w-full">
           {mainVariant.imageUrl ? (
-            <Image src={mainVariant.imageUrl} alt={product.name} fill unoptimized className="rounded-lg object-cover" />
+            <Image
+              src={normalizeImageSrc(mainVariant.imageUrl)}
+              alt={product.name}
+              fill
+              className="rounded-lg object-cover"
+            />
           ) : (
             <div className="flex h-full w-full items-center justify-center rounded-lg border border-dashed border-slate-300 bg-slate-100 text-slate-400">
               <Package className="h-8 w-8" />
@@ -215,10 +221,9 @@ const ProductCard = ({ product, onEdit, onDelete, onRefresh }) => {
                     {variant.imageUrl && (
                       <div className="relative h-16 w-16 shrink-0">
                         <Image
-                          src={variant.imageUrl}
+                          src={normalizeImageSrc(variant.imageUrl)}
                           alt={`Variação ${idx + 1}`}
                           fill
-                          unoptimized
                           className="rounded-md object-cover"
                         />
                       </div>

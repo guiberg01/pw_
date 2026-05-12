@@ -35,6 +35,7 @@ import { Input } from "@/components/ui/input";
 import { addressService } from "@/services/addressService";
 import { storeService } from "@/services/storeService";
 import { createSellerStoreSchema } from "@/validators/sellerOnboarding.validator";
+import { normalizeImageSrc } from "@/lib/imageUtils";
 
 const defaultValues = {
   name: "",
@@ -800,11 +801,10 @@ export default function SellerOnboardingPage() {
                       {logoPreview && (
                         <div className="relative inline-block">
                           <Image
-                            src={logoPreview}
+                            src={normalizeImageSrc(logoPreview)}
                             alt="Logo preview"
                             width={80}
                             height={80}
-                            unoptimized
                             className="h-20 w-20 rounded-xl border border-slate-200 object-cover"
                           />
                           <button
@@ -847,11 +847,10 @@ export default function SellerOnboardingPage() {
                       {bannerPreview && (
                         <div className="relative inline-block w-full">
                           <Image
-                            src={bannerPreview}
+                            src={normalizeImageSrc(bannerPreview)}
                             alt="Banner preview"
                             width={960}
                             height={240}
-                            unoptimized
                             className="h-32 w-full rounded-xl border border-slate-200 object-cover"
                           />
                           <button
@@ -931,11 +930,10 @@ export default function SellerOnboardingPage() {
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
                       <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Logo</p>
                       <Image
-                        src={store.logoUrl}
+                        src={normalizeImageSrc(store.logoUrl)}
                         alt="Store logo"
                         width={64}
                         height={64}
-                        unoptimized
                         className="mt-2 h-16 w-16 rounded-xl object-cover"
                       />
                     </div>
@@ -945,11 +943,10 @@ export default function SellerOnboardingPage() {
                     <div className="rounded-2xl border border-slate-200 bg-white p-4">
                       <p className="text-xs uppercase tracking-[0.28em] text-slate-500">Banner</p>
                       <Image
-                        src={store.bannerUrl}
+                        src={normalizeImageSrc(store.bannerUrl)}
                         alt="Store banner"
                         width={960}
                         height={240}
-                        unoptimized
                         className="mt-2 h-28 w-full rounded-xl object-cover"
                       />
                     </div>

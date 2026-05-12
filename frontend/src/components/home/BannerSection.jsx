@@ -10,10 +10,12 @@ import { bannerService } from "@/services/bannerService";
 import { useBannerForm } from "@/hooks/useBannerForm";
 import BannerFormModal from "@/components/home/BannerFormModal";
 import BannerDeleteModal from "@/components/home/BannerDeleteModal";
+import { normalizeImageSrc } from "@/lib/imageUtils";
 
 const getBannerId = (banner) => banner?._id || banner?.id;
 
-const getBannerImage = (banner) => banner?.imageUrl || "https://placehold.co/1400x480/1a4f9c/ffffff?text=TánaMão";
+const getBannerImage = (banner) =>
+  normalizeImageSrc(banner?.imageUrl || "https://placehold.co/1400x480/1a4f9c/ffffff?text=TánaMão");
 
 const bannerFormDefaults = {
   title: "",
@@ -296,7 +298,6 @@ export function BannerSection({ isAdmin = false }) {
                 src={getBannerImage(currentBanner)}
                 alt={currentBanner.title || "Banner promocional"}
                 fill
-                unoptimized
                 priority
                 className="object-cover"
                 sizes="(max-width: 768px) 100vw, 1280px"
@@ -408,7 +409,6 @@ export function BannerSection({ isAdmin = false }) {
                         src={getBannerImage(banner)}
                         alt={banner.title || "Banner"}
                         fill
-                        unoptimized
                         className="object-cover"
                         sizes="(max-width: 768px) 100vw, 50vw"
                       />

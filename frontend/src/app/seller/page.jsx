@@ -26,6 +26,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { storeService } from "@/services/storeService";
 import ProductListClient from "@/components/product/ProductListClient";
 import StoreSummarySection from "@/components/seller/store/StoreSummarySection";
+import { normalizeImageSrc } from "@/lib/imageUtils";
 
 const StatCard = ({ icon: Icon, label, value, trend }) => (
   <Card className="border-slate-200 bg-white/90">
@@ -346,7 +347,13 @@ export default function SellerPage() {
                 {/* Banner com overlay */}
                 <div className="relative h-48 w-full">
                   {store.bannerUrl ? (
-                    <Image src={store.bannerUrl} alt="Banner" fill priority unoptimized className="object-cover" />
+                    <Image
+                      src={normalizeImageSrc(store.bannerUrl)}
+                      alt="Banner"
+                      fill
+                      priority
+                      className="object-cover"
+                    />
                   ) : (
                     <div className="h-full w-full bg-linear-to-r from-indigo-500 to-blue-500" />
                   )}
@@ -360,7 +367,12 @@ export default function SellerPage() {
                       {/* Logo */}
                       {store.logoUrl && (
                         <div className="relative h-20 w-20 shrink-0 overflow-hidden rounded-xl border-4 border-white shadow-xl">
-                          <Image src={store.logoUrl} alt={store.name} fill unoptimized className="object-cover" />
+                          <Image
+                            src={normalizeImageSrc(store.logoUrl)}
+                            alt={store.name}
+                            fill
+                            className="object-cover"
+                          />
                         </div>
                       )}
 

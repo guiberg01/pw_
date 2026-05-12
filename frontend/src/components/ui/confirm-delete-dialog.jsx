@@ -2,6 +2,7 @@
 
 import React from "react";
 import Image from "next/image";
+import { normalizeImageSrc } from "@/lib/imageUtils";
 import { LoaderCircle, Package } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,7 +27,7 @@ export default function ConfirmDeleteDialog({ open, onOpenChange, name, id, imag
         <div className="mt-4 flex items-center gap-3">
           {imageUrl ? (
             <div className="relative h-16 w-16 rounded-md overflow-hidden">
-              <Image src={imageUrl} alt={name} fill unoptimized className="object-cover" />
+              <Image src={normalizeImageSrc(imageUrl)} alt={name} fill className="object-cover" />
             </div>
           ) : (
             <div className="h-16 w-16 rounded-md bg-slate-100 flex items-center justify-center text-slate-400">

@@ -13,6 +13,7 @@ import { categoryService } from "@/services/categoryService";
 import { storeService } from "@/services/storeService";
 import { uploadService } from "@/services/uploadService";
 import { formatCurrency } from "@/lib/utils";
+import { normalizeImageSrc } from "@/lib/imageUtils";
 
 const createLocalId = () =>
   globalThis.crypto?.randomUUID?.() ?? `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
@@ -173,7 +174,12 @@ const VariantSection = ({ variant, displayIndex, onUpdate, onRemove, isMainVaria
             <div className="flex gap-3">
               {variant.imageUrl && (
                 <div className="relative h-24 w-24">
-                  <Image src={variant.imageUrl} alt="Variante" fill unoptimized className="rounded-lg object-cover" />
+                  <Image
+                    src={normalizeImageSrc(variant.imageUrl)}
+                    alt="Variante"
+                    fill
+                    className="rounded-lg object-cover"
+                  />
                 </div>
               )}
               <label className="flex flex-1 flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-300 p-4 text-center cursor-pointer hover:border-slate-400 transition-colors">

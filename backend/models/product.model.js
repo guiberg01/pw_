@@ -38,6 +38,11 @@ const productSchema = new mongoose.Schema(
       type: Boolean,
       default: false,
     },
+    purchaseCount: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
     maxPerPerson: {
       type: Number,
       min: [1, "Limite máximo deve ser ao menos 1"],

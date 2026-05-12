@@ -4,6 +4,7 @@ import Cart from "../models/cart.model.js";
 import Order from "../models/order.model.js";
 import SubOrder from "../models/subOrder.model.js";
 import Shipping from "../models/shipping.model.js";
+import Product from "../models/product.model.js";
 import ProductVariant from "../models/productVariant.model.js";
 import Address from "../models/address.model.js";
 import PaymentMethod from "../models/paymentMethod.model.js";
@@ -177,6 +178,51 @@ const buildShippingSnapshot = (address) => ({
   phoneNumber: address.phoneNumber,
   location: address.location,
 });
+
+const incrementProductsPurchaseCount = async ({ session, subOrders = [] }) => {
+  const quantityByVariantId = new Map();
+
+  for (const subOrder of subOrders) {
+    for (const item of subOrder.items ?? []) {
+      const variantId = item?.productVariantId?.toString?.();
+      const quantity = Number(item?.quantity ?? 0);
+      if (!variantId || quantity <= 0) continue;
+
+      quantityByVariantId.set(variantId, Number(quantityByVariantId.get(variantId) ?? 0) + quantity);
+    }
+  }
+
+  if (quantityByVariantId.size === 0) return;
+
+  const variants = await ProductVariant.find({ _id: { $in: Array.from(quantityByVariantId.keys()) } })
+    .session(session)
+    .select("product")
+    .lean();
+
+  const quantityByProductId = new Map();
+
+  for (const variant of variants) {
+    const variantId = variant?._id?.toString?.();
+    const productId = variant?.product?.toString?.();
+    if (!variantId || !productId) continue;
+
+    const quantity = Number(quantityByVariantId.get(variantId) ?? 0);
+    if (quantity <= 0) continue;
+
+    quantityByProductId.set(productId, Number(quantityByProductId.get(productId) ?? 0) + quantity);
+  }
+
+  if (quantityByProductId.size === 0) return;
+
+  const updates = Array.from(quantityByProductId.entries()).map(([productId, quantity]) => ({
+    updateOne: {
+      filter: { _id: productId },
+      update: { $inc: { purchaseCount: quantity } },
+    },
+  }));
+
+  await Product.bulkWrite(updates, { session, ordered: false });
+};
 
 const validateCouponByContextOrThrow = async ({ couponCode, subTotal, items, userId, session }) => {
   if (!couponCode) {
@@ -1220,9 +1266,7 @@ export const resumeCheckoutIntentForUser = async (userId, orderId) => {
 };
 
 export const reconcileCheckoutOrderPaymentForUser = async (userId, orderId) => {
-  const order = await Order.findOne({ _id: orderId, user: userId })
-    .select("_id user status stripePaymentId")
-    .lean();
+  const order = await Order.findOne({ _id: orderId, user: userId }).select("_id user status stripePaymentId").lean();
 
   if (!order) {
     throw createHttpError("Pedido não encontrado", 404, undefined, "CHECKOUT_ORDER_NOT_FOUND");
@@ -1501,6 +1545,9 @@ const markPaymentAsSucceededByIntentId = async ({ stripePaymentIntent, stripeEve
       if (payment.status === paymentStatuses.SUCCEEDED) {
         const order = await Order.findById(payment.order).session(session);
         if (order && order.status !== orderStatuses.PAID) {
+          const subOrders = await SubOrder.find({ order: order._id }).session(session);
+          await incrementProductsPurchaseCount({ session, subOrders });
+
           order.status = orderStatuses.PAID;
           await order.save({ session });
 
@@ -1600,6 +1647,8 @@ const markPaymentAsSucceededByIntentId = async ({ stripePaymentIntent, stripeEve
           );
         }
       }
+
+      await incrementProductsPurchaseCount({ session, subOrders });
 
       const couponSnapshot = subOrders.find((subOrder) => subOrder.coupon?.couponId)?.coupon;
       await consumeCouponIfNeeded({
