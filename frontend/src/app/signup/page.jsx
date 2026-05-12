@@ -28,7 +28,7 @@ export default function SignupPage() {
   };
 
   return (
-    <div className="relative isolate flex min-h-[calc(100vh-130px)] flex-col items-center justify-center bg-[#1a4f9c] p-4 font-sans overflow-hidden">
+    <div className="relative isolate flex min-h-full flex-1 flex-col items-center justify-center bg-[#1a4f9c] p-4 font-sans overflow-hidden">
       <div
         className="absolute z-[-1] top-1/2 left-1/2 -translate-x-1/2
                    w-140 h-140 sm:w-200 sm:h-200

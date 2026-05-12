@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Search,
@@ -115,8 +115,20 @@ export function Header({
       try {
         const res = await fetch("/api/categories");
         if (!res.ok) return;
-        const data = await res.json();
-        if (mounted) setCategories(Array.isArray(data) ? data : []);
+        const payload = await res.json();
+
+        let items = [];
+        if (Array.isArray(payload)) {
+          items = payload;
+        } else if (Array.isArray(payload.data)) {
+          items = payload.data;
+        } else if (Array.isArray(payload.data?.items)) {
+          items = payload.data.items;
+        } else {
+          items = [];
+        }
+
+        if (mounted) setCategories(items);
       } catch (e) {
         // ignore
       }
@@ -124,6 +136,17 @@ export function Header({
     load();
     return () => {
       mounted = false;
+    };
+  }, []);
+
+  const closeTimeoutRef = useRef(null);
+
+  useEffect(() => {
+    return () => {
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+        closeTimeoutRef.current = null;
+      }
     };
   }, []);
 
@@ -446,11 +469,25 @@ export function Header({
             <span>{isLoading ? "Buscando..." : location}</span>
           </button>
 
-          <div className="relative hidden sm:inline-block">
+          <div
+            className="relative hidden sm:inline-block"
+            onMouseEnter={() => {
+              if (closeTimeoutRef.current) {
+                clearTimeout(closeTimeoutRef.current);
+                closeTimeoutRef.current = null;
+              }
+              setIsCategoriesOpen(true);
+            }}
+            onMouseLeave={() => {
+              if (closeTimeoutRef.current) clearTimeout(closeTimeoutRef.current);
+              closeTimeoutRef.current = setTimeout(() => {
+                setIsCategoriesOpen(false);
+                closeTimeoutRef.current = null;
+              }, 180);
+            }}
+          >
             <button
               type="button"
-              onMouseEnter={() => setIsCategoriesOpen(true)}
-              onMouseLeave={() => setIsCategoriesOpen(false)}
               className="inline-flex items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 font-medium text-white hover:bg-white/15"
               aria-expanded={isCategoriesOpen}
             >
@@ -459,8 +496,6 @@ export function Header({
             </button>
 
             <div
-              onMouseEnter={() => setIsCategoriesOpen(true)}
-              onMouseLeave={() => setIsCategoriesOpen(false)}
               className={`absolute left-0 z-2000 mt-2 w-56 rounded-lg bg-white text-slate-800 shadow-lg border border-slate-100 transition-opacity ${
                 isCategoriesOpen ? "visible opacity-100" : "invisible opacity-0"
               }`}
