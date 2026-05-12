@@ -66,14 +66,14 @@ export function ProductDetailsClient({ product }) {
         </div>
       </div>
 
-      <div className="border-b border-slate-200 pb-4 flex justify-between px-4 py-8 max-w-6xl mx-auto">
+      <div className="border-b border-slate-200 pb-4 gap-6 flex justify-between px-4 py-8 max-w-6xl mx-auto">
         <div className="flex flex-col justify-end items-start">
           <Link href={`/stores/${product.store.slug}`}>
             <p className="text-sm text-slate-500 hover:text-blue-600 transition mb-1">Loja: {product.store.name}</p>
           </Link>
           <h1 className="text-3xl font-bold text-slate-900">{product.name}</h1>
         </div>
-        <div className="flex-col flex items-end justify-end">
+        <div className="flex-col flex text-right items-end justify-end">
           <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
             <div className="flex items-center gap-1">
               {[...Array(5)].map((_, i) => (

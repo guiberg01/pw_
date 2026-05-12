@@ -16,14 +16,17 @@ export default function NotFound() {
                    blur-[100px] sm:blur-[130px] 
                    pointer-events-none"
       />
-      <div className="grid place-items-center gap-0">
+      <div className="grid place-items-center gap-0 mx-auto px-2">
         <MapPinX className="w-16 h-16" />
-        <h1 className="flex gap-2 items-center text-5xl font-bold">
-          <span className="p-1 rounded-md text-3xl text-[#1a4f9c] font-bold bg-yellow-400">404</span> Está perdido
-          <span className=" font-bold text-6xl text-yellow-400">?</span>
+        <h1 className="flex gap-2 items-center text-5xl font-bold max-[492px]:text-3xl">
+          <span className="p-1 rounded-md text-3xl max-[492px]:text-xl text-[#1a4f9c] font-bold bg-yellow-400">
+            404
+          </span>
+          Está perdido
+          <span className=" font-bold max-[492px]:text-4xl text-6xl text-yellow-400">?</span>
         </h1>
       </div>
-      <p className="text-center">
+      <p className="text-center px-2">
         Ops! O conteúdo que você procura não existe... <br /> Mas não se preocupe! Te ajudamos a voltar aos trilhos.
       </p>
       <Link
