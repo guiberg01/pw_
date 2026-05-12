@@ -70,7 +70,6 @@ function PaymentMethodFormDialog({ open, onOpenChange, method, onSave }) {
         </DialogHeader>
 
         {method ? (
-          // Editing mode: show Stripe ID as read-only
           <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
             <div className="space-y-2 bg-slate-50 rounded-lg p-3">
               <label className="text-sm font-medium text-slate-700">ID da forma de pagamento</label>
@@ -210,7 +209,6 @@ function PaymentMethodFormDialog({ open, onOpenChange, method, onSave }) {
             </DialogFooter>
           </form>
         ) : (
-          // Create mode: show message about Stripe integration
           <div className="space-y-4">
             <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
               <h4 className="font-semibold text-blue-900 mb-2">Adicionar novo cartão</h4>
