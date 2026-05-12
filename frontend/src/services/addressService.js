@@ -21,8 +21,23 @@ export const addressService = {
     return extractData(response);
   },
 
+  async getMyAddresses(params = {}) {
+    const response = await api.get("/addresses", { params });
+    return extractData(response) ?? [];
+  },
+
   async getMyAddressById(addressId) {
     const response = await api.get(`/addresses/${addressId}`);
+    return extractData(response);
+  },
+
+  async setMyDefaultAddress(addressId) {
+    const response = await api.patch(`/addresses/${addressId}/default`);
+    return extractData(response);
+  },
+
+  async deleteMyAddress(addressId) {
+    const response = await api.delete(`/addresses/${addressId}`);
     return extractData(response);
   },
 };
