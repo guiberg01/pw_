@@ -1,8 +1,9 @@
 import { Router } from "express";
-import { logout, signup, login, refreshToken } from "../controllers/auth.controller.js";
+import { getMyProfile, logout, signup, login, refreshToken, updateMyProfile } from "../controllers/auth.controller.js";
 import { validateBody } from "../middleware/validation.middleware.js";
 import { createRateLimit } from "../middleware/rateLimit.middleware.js";
-import { loginSchema, signupSchema } from "../validators/auth.validator.js";
+import { isLoggedIn } from "../middleware/auth.middleware.js";
+import { loginSchema, signupSchema, updateProfileSchema } from "../validators/auth.validator.js";
 
 // Criando o "roteador" para as rotas de autenticação
 const router = Router();
@@ -28,10 +29,11 @@ const refreshRateLimit = createRateLimit({
   message: "Muitas tentativas de renovação de sessão. Aguarde um pouco e tente novamente.",
 });
 
-// rotas (esse signup, login, logout ele ja ta puxando do controller)
 router.post("/signup", signupRateLimit, validateBody(signupSchema), signup);
 router.post("/login", loginRateLimit, validateBody(loginSchema), login);
 router.post("/logout", logout);
 router.post("/refresh", refreshRateLimit, refreshToken);
+router.get("/me", isLoggedIn, getMyProfile);
+router.patch("/me", isLoggedIn, validateBody(updateProfileSchema), updateMyProfile);
 
 export default router;

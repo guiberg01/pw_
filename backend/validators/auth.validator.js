@@ -59,6 +59,29 @@ export const signupSchema = z.object({
     }),
 });
 
+const updateTelephoneSchema = z
+  .string()
+  .trim()
+  .transform((val) => val.replace(/[^\d]+/g, ""))
+  .pipe(z.string().regex(/^\d{10,11}$/, "Telefone inválido. Deve ter 10 ou 11 dígitos."))
+  .optional();
+
+const updateEmailSchema = z
+  .string()
+  .trim()
+  .pipe(z.email({ error: "Email inválido" }))
+  .optional();
+
+export const updateProfileSchema = z
+  .object({
+    name: z.string().trim().min(1, "Nome é obrigatório").optional(),
+    email: updateEmailSchema,
+    telephone: updateTelephoneSchema,
+  })
+  .refine((data) => Object.values(data).some((value) => value !== undefined), {
+    message: "Envie ao menos um campo para atualização",
+  });
+
 export const loginSchema = z.object({
   email: z
     .string()

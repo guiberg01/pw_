@@ -23,6 +23,7 @@ import { removeFrontendCookie } from "@/utils/cookies";
 import { storeService } from "@/services/storeService";
 import Link from "next/link";
 import { CartButton } from "@/components/cart/CartButton";
+import { NotificationButton } from "@/components/notifications/NotificationButton";
 
 export function Header({
   initialLocation = "Descobrir sua região",
@@ -336,7 +337,8 @@ export function Header({
               </div>
             )}
           </div>
-          <div className="shrink-0">
+          <div className="flex gap-2 shrink-0 items-center">
+            <NotificationButton isUserLoggedIn={isUserLoggedIn} />
             <CartButton />
           </div>
         </div>
