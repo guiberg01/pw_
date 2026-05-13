@@ -171,5 +171,6 @@ export const productVariantIdParamSchema = z.object({
 export const productListQuerySchema = paginationQuerySchema.extend({
   categoryId: mongoIdSchema.optional(),
   search: z.string().trim().min(1, "A busca deve ter ao menos 1 caractere").optional(),
+  location: z.string().trim().min(1, "A localização deve ter ao menos 1 caractere").optional(),
   status: z.enum(["active", "blocked"]).optional(),
 });
