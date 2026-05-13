@@ -179,9 +179,20 @@ export const clickNotification = async (userId, notificationId) => {
   notification.clickedAt = new Date();
   await notification.save();
 
+  const actionUrl = (() => {
+    const url = notification.actionUrl ?? null;
+    if (typeof url !== "string") return null;
+
+    if (/^\/orders\/\[.*\]$/.test(url) || /^\/pedidos\/\[.*\]$/.test(url)) {
+      return "/pedidos";
+    }
+
+    return url.replace(/^\/orders\//, "/pedidos/");
+  })();
+
   return {
     notification,
-    actionUrl: notification.actionUrl ?? null,
+    actionUrl,
   };
 };
 
@@ -224,7 +235,7 @@ export const notifyOrderPaid = async (orderId) => {
     message: `Seu pedido #${order._id.toString().slice(-6)} foi confirmado e está em preparação.`,
     type: "order_status",
     recipientRole: "everyone",
-    actionUrl: `/orders/${order._id}`,
+    actionUrl: `/pedidos/${order._id}`,
     refModel: { refId: order._id, refModel: "Order" },
   });
 
@@ -240,7 +251,7 @@ export const notifyOrderPaid = async (orderId) => {
       message: `Você recebeu uma nova venda na loja ${stores.length === 1 ? stores[0].name : ""}`.trim(),
       type: "product_sold",
       recipientRole: "seller",
-      actionUrl: `/stores/me/orders/${order._id}`,
+      actionUrl: `/seller/orders/${order._id}`,
       refModel: { refId: order._id, refModel: "Order" },
     },
   );
@@ -252,7 +263,7 @@ export const notifyOrderStatusForCustomer = async ({ orderId, userId, status }) 
     message: `Seu pedido #${String(orderId).slice(-6)} mudou para: ${status}.`,
     type: "order_status",
     recipientRole: "everyone",
-    actionUrl: `/orders/${orderId}`,
+    actionUrl: `/pedidos/${orderId}`,
     refModel: { refId: orderId, refModel: "Order" },
     metadata: { status },
   });
@@ -277,7 +288,7 @@ export const notifyOrderFailedOrCancelled = async ({ orderId }) => {
       message: `Houve um problema com o pedido #${order._id.toString().slice(-6)}.`,
       type: "order_cancelled",
       recipientRole: "everyone",
-      actionUrl: `/orders/${order._id}`,
+      actionUrl: `/pedidos/${order._id}`,
       refModel: { refId: order._id, refModel: "Order" },
       metadata: { status: order.status },
     }),
@@ -288,7 +299,7 @@ export const notifyOrderFailedOrCancelled = async ({ orderId }) => {
         message: `O pedido #${order._id.toString().slice(-6)} não foi concluído.`,
         type: "order_cancelled",
         recipientRole: "seller",
-        actionUrl: `/stores/me/orders/${order._id}`,
+        actionUrl: `/seller/orders/${order._id}`,
         refModel: { refId: order._id, refModel: "Order" },
       },
     ),
@@ -302,7 +313,7 @@ export const notifyRefundEvent = async ({ orderId, userId, sellerIds = [] }) => 
       message: `O reembolso do pedido #${String(orderId).slice(-6)} foi atualizado.`,
       type: "refund",
       recipientRole: "everyone",
-      actionUrl: `/orders/${orderId}`,
+      actionUrl: `/pedidos/${orderId}`,
       refModel: { refId: orderId, refModel: "Order" },
     }),
     createNotificationsForUsers(sellerIds, {
@@ -310,7 +321,7 @@ export const notifyRefundEvent = async ({ orderId, userId, sellerIds = [] }) => 
       message: `Um pedido da loja recebeu atualização de reembolso (#${String(orderId).slice(-6)}).`,
       type: "refund",
       recipientRole: "seller",
-      actionUrl: `/stores/me/orders/${orderId}`,
+      actionUrl: `/seller/orders/${orderId}`,
       refModel: { refId: orderId, refModel: "Order" },
     }),
   ]);
@@ -328,7 +339,7 @@ export const notifyReviewCreatedForSeller = async ({ productId, reviewId, rating
     message: `Seu produto recebeu uma review com nota ${rating}.`,
     type: "review_received",
     recipientRole: "seller",
-    actionUrl: `/stores/me/reviews`,
+    actionUrl: `/seller/reviews`,
     refModel: { refId: reviewId, refModel: "Review" },
     metadata: { productId: product._id, rating },
   });
@@ -343,6 +354,25 @@ export const notifyReviewReplyForCustomer = async ({ userId, reviewId, productId
     actionUrl: `/products/${productId}`,
     refModel: { refId: reviewId, refModel: "Review" },
     metadata: { productId },
+  });
+};
+
+export const notifyReviewRequestForCustomer = async ({ userId, orderId, subOrderId }) => {
+  const dedupeKey = `notifications:review-request:${String(subOrderId)}`;
+  const lock = await redis.set(dedupeKey, "1", "NX", "EX", 14 * 24 * 60 * 60);
+
+  if (lock !== "OK") {
+    return null;
+  }
+
+  return createNotificationForUser(userId, {
+    title: "Conte como foi sua compra",
+    message: `Seu pedido #${String(orderId).slice(-6)} foi entregue. Avalie o pedido e a loja.`,
+    type: "review_request",
+    recipientRole: "customer",
+    actionUrl: `/pedidos/${orderId}`,
+    refModel: { refId: subOrderId, refModel: "SubOrder" },
+    metadata: { orderId, subOrderId },
   });
 };
 

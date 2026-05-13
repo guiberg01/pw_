@@ -8,6 +8,8 @@ import { AddToCartButton } from "@/components/cart/AddToCartButton";
 import { formatCurrency } from "@/lib/formatters";
 import { normalizeImageSrc } from "@/lib/imageUtils";
 import { favoriteService } from "@/services/favoriteService";
+import { reviewService } from "@/services/reviewService";
+import { ProductReviewsSection } from "@/components/product/ProductReviewsSection";
 import { toast } from "sonner";
 import { Heart, Share2, Star, Zap } from "lucide-react";
 
@@ -25,6 +27,7 @@ export function ProductDetailsClient({ product }) {
   );
   const [isFavorite, setIsFavorite] = useState(false);
   const [isFavoriteLoading, setIsFavoriteLoading] = useState(false);
+  const [productReviewSummary, setProductReviewSummary] = useState(null);
   const [selectedId, setSelectedId] = useState(variants[0]?._id ?? null);
 
   const selectedVariant = variants.find((variant) => variant._id === selectedId) || variants[0] || null;
@@ -40,6 +43,9 @@ export function ProductDetailsClient({ product }) {
   const purchaseCount = Math.max(0, Number(product?.purchaseCount ?? 0) || 0);
   const purchaseLabel = `${purchaseCount === 0 ? "Seja o primeiro a comprar o produto" : `${purchaseCount} ${purchaseCount === 1 ? "compra" : "compras"}`}`;
   const maxAllowed = Math.min(stock || 0, product.maxPerPerson || Infinity);
+  const productRatingCount = Number(productReviewSummary?.summary?.total ?? product?.rating?.ratingCount ?? 0);
+  const productRatingAverage = Number(productReviewSummary?.summary?.average ?? product?.rating?.average ?? 0);
+  const storeRating = Number(product?.store?.reputation ?? 0);
   const variantDetails = [
     { label: "SKU", value: selectedVariant?.sku || "-" },
     { label: "Estoque", value: stock },
@@ -67,6 +73,27 @@ export function ProductDetailsClient({ product }) {
     };
 
     loadFavoriteState();
+
+    return () => {
+      mounted = false;
+    };
+  }, [product._id]);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadReviewSummary = async () => {
+      try {
+        const data = await reviewService.getProductReviews(product._id, { page: 1, limit: 1 });
+        if (!mounted) return;
+        setProductReviewSummary(data);
+      } catch (error) {
+        if (!mounted) return;
+        setProductReviewSummary(null);
+      }
+    };
+
+    loadReviewSummary();
 
     return () => {
       mounted = false;
@@ -111,19 +138,49 @@ export function ProductDetailsClient({ product }) {
 
       <div className="border-b border-slate-200 pb-4 gap-6 flex justify-between px-4 py-8 max-w-6xl mx-auto">
         <div className="flex flex-col justify-end items-start">
-          <Link href={`/stores/${product.store.slug}`}>
+          <Link href={`/stores/${product.store.id}`}>
             <p className="text-sm text-slate-500 hover:text-blue-600 transition mb-1">Loja: {product.store.name}</p>
           </Link>
           <h1 className="text-3xl font-bold text-slate-900">{product.name}</h1>
         </div>
         <div className="flex-col flex text-right items-end justify-end">
-          <div className="flex flex-col sm:flex-row items-center gap-2 sm:gap-4">
-            <div className="flex items-center gap-1">
-              {[...Array(5)].map((_, i) => (
-                <Star key={i} className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-              ))}
+          <div className="space-y-2">
+            <div className="flex flex-col items-end gap-1">
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Produto</span>
+                <div className="flex items-center gap-1">
+                  {[...Array(5)].map((_, i) => {
+                    const isFilled = i < Math.round(productRatingAverage);
+                    return (
+                      <Star
+                        key={i}
+                        className={`h-4 w-4 ${isFilled ? "fill-yellow-400 text-yellow-400" : "text-yellow-200"}`}
+                      />
+                    );
+                  })}
+                </div>
+                <span className="text-sm text-slate-600 whitespace-nowrap">
+                  ({productRatingAverage.toFixed(1)}{" "}
+                  {productRatingCount > 0 ? `${productRatingCount} avaliações` : "sem avaliações"})
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2">
+                <span className="text-xs font-semibold uppercase tracking-wide text-slate-500">Loja</span>
+                <div className="flex items-center gap-1">
+                  {[...Array(5)].map((_, i) => {
+                    const isFilled = i < Math.round(storeRating);
+                    return (
+                      <Star
+                        key={i}
+                        className={`h-4 w-4 ${isFilled ? "fill-amber-400 text-amber-400" : "text-amber-200"}`}
+                      />
+                    );
+                  })}
+                </div>
+                <span className="text-sm text-slate-600 whitespace-nowrap">({storeRating.toFixed(1)} reputação)</span>
+              </div>
             </div>
-            <span className="text-sm text-slate-600 whitespace-nowrap">(0 avaliações)</span>
           </div>
           <span className="block text-sm font-medium text-slate-500 mt-1">{purchaseLabel}</span>
         </div>
@@ -301,6 +358,8 @@ export function ProductDetailsClient({ product }) {
             )}
           </div>
         </div>
+
+        <ProductReviewsSection productId={product._id} />
       </div>
     </div>
   );

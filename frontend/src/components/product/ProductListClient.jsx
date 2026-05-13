@@ -3,23 +3,24 @@
 import { useEffect, useMemo, useState } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import ProductGrid from "./ProductGrid";
-import SearchBar from "./SearchBar";
-import { getProductCategory } from "@/lib/product-display";
+import { getProductCategory, getProductPricing } from "@/lib/product-display";
+import { categoryService } from "@/services/categoryService";
 
 export default function ProductListClient({
   initialProducts = [],
   fetcher = null,
-  initialSearch = "",
   initialCategoryId = "",
+  initialPromotion = false,
   syncToUrl = false,
 }) {
   const router = useRouter();
   const pathname = usePathname();
   const searchParams = useSearchParams();
   const [products, setProducts] = useState(initialProducts || []);
-  const [query, setQuery] = useState(initialSearch || "");
   const [category, setCategory] = useState(initialCategoryId || "");
+  const [categoryOptions, setCategoryOptions] = useState([]);
   const [onlyHighlighted, setOnlyHighlighted] = useState(false);
+  const [onlyPromotion, setOnlyPromotion] = useState(initialPromotion || false);
   const [sortBy, setSortBy] = useState("relevance");
   const [isLoading, setIsLoading] = useState(Boolean(fetcher));
 
@@ -46,21 +47,50 @@ export default function ProductListClient({
   }, [fetcher]);
 
   useEffect(() => {
+    let mounted = true;
+
+    const loadCategories = async () => {
+      try {
+        const categories = await categoryService.getActiveCategories({ page: 1, limit: 200 });
+        if (!mounted) return;
+
+        const normalized = (categories || [])
+          .map((item) => ({
+            key: item?._id || item?.id || item?.slug || item?.name,
+            label: item?.name || "Sem nome",
+          }))
+          .filter((item) => Boolean(item.key));
+
+        setCategoryOptions(normalized);
+      } catch (error) {
+        if (!mounted) return;
+        setCategoryOptions([]);
+      }
+    };
+
+    loadCategories();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  useEffect(() => {
     if (!syncToUrl) return;
 
     const timer = setTimeout(() => {
       const nextParams = new URLSearchParams(searchParams.toString());
 
-      if (query.trim()) {
-        nextParams.set("search", query.trim());
-      } else {
-        nextParams.delete("search");
-      }
-
       if (category) {
         nextParams.set("categoryId", category);
       } else {
         nextParams.delete("categoryId");
+      }
+
+      if (onlyPromotion) {
+        nextParams.set("promotion", "true");
+      } else {
+        nextParams.delete("promotion");
       }
 
       nextParams.delete("page");
@@ -74,9 +104,13 @@ export default function ProductListClient({
     }, 500);
 
     return () => clearTimeout(timer);
-  }, [syncToUrl, query, category, pathname, router, searchParams]);
+  }, [syncToUrl, category, onlyPromotion, pathname, router, searchParams]);
 
   const categories = useMemo(() => {
+    if (categoryOptions.length > 0) {
+      return categoryOptions;
+    }
+
     const map = new Map();
 
     products.forEach((product) => {
@@ -87,28 +121,19 @@ export default function ProductListClient({
     });
 
     return Array.from(map.entries()).map(([key, label]) => ({ key, label }));
-  }, [products]);
+  }, [categoryOptions, products]);
 
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
     const normalized = products.filter((product) => {
       const productCategory = getProductCategory(product);
-      const matchesCategory = !category || productCategory.key === category;
+      const matchesCategory = !category || String(productCategory.key) === String(category);
       const matchesFeatured = !onlyHighlighted || Boolean(product.highlighted);
-      const searchableText = [
-        product.name,
-        product.description,
-        product.mainVariant?.sku,
-        product.basePrice,
-        product.store?.name,
-        productCategory.label,
-      ]
-        .filter(Boolean)
-        .join(" ")
-        .toLowerCase();
 
-      const matchesQuery = !q || searchableText.includes(q);
-      return matchesCategory && matchesFeatured && matchesQuery;
+      const pricing = getProductPricing(product);
+      const hasDiscount = Boolean(pricing.isPromotion);
+      const matchesPromotion = !onlyPromotion || hasDiscount;
+
+      return matchesCategory && matchesFeatured && matchesPromotion;
     });
 
     return [...normalized].sort((a, b) => {
@@ -127,16 +152,12 @@ export default function ProductListClient({
         Number(a.createdAt ? new Date(a.createdAt).getTime() : 0)
       );
     });
-  }, [products, query, category, onlyHighlighted, sortBy]);
+  }, [products, category, onlyHighlighted, onlyPromotion, sortBy]);
 
   return (
     <div className="space-y-5">
       <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
-        <div className="grid gap-3 lg:grid-cols-[1.4fr_0.8fr_0.8fr_0.8fr]">
-          <div className="lg:col-span-1 [&>*:first-child]:h-full">
-            <SearchBar allProducts={products} value={query} onValueChange={setQuery} />
-          </div>
-
+        <div className="grid gap-3 lg:grid-cols-3">
           <div>
             <select
               value={category}
@@ -178,13 +199,13 @@ export default function ProductListClient({
 
       <div className="flex items-center justify-between text-sm text-slate-600">
         <span>{isLoading ? "Carregando produtos..." : `${filtered.length} produto(s) encontrado(s)`}</span>
-        {(query || category || onlyHighlighted) && (
+        {(category || onlyHighlighted || onlyPromotion) && (
           <button
             type="button"
             onClick={() => {
-              setQuery("");
               setCategory("");
               setOnlyHighlighted(false);
+              setOnlyPromotion(false);
               setSortBy("relevance");
             }}
             className="font-medium text-blue-600 hover:underline"

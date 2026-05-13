@@ -296,6 +296,15 @@ export default function SellerProductsListPage() {
     return () => window.clearTimeout(timeoutId);
   }, [searchInput]);
 
+  useEffect(() => {
+    const handlePopState = () => {
+      router.refresh();
+    };
+
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [router]);
+
   // Carrega as categorias na montagem do componente
   useEffect(() => {
     (async () => {

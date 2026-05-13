@@ -31,22 +31,28 @@ const formatDateTime = (value) => {
 };
 
 export default function ReviewCard({ review, onReply, onDeleteReply }) {
+  const isProductReview = Boolean(review?.product);
+  const isOrderReview = !isProductReview;
   const hasReply = Boolean(review?.sellerReply?.comment);
   const mediaCount = (review?.images?.length || 0) + (review?.videos?.length || 0);
+  const primaryRating = isProductReview ? review?.rating : review?.storeRating;
+  const secondaryRating = isOrderReview ? review?.orderRating : null;
+  const title = isProductReview
+    ? review?.product?.name || "Produto"
+    : `Pedido #${String(review?.order || "").slice(-6) || "-"}`;
+  const customerLabel = review?.user?.name || "Cliente";
+  const productImage = review?.product?.mainImageUrl;
 
   return (
     <article className="overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_10px_30px_rgba(15,23,42,0.05)]">
       <div className="grid gap-0 lg:grid-cols-[160px_1fr]">
         <div className="relative h-52 bg-slate-50 lg:h-full">
-          {review?.product?.mainImageUrl ? (
-            <Image
-              src={normalizeImageSrc(review.product.mainImageUrl)}
-              alt={review.product?.name || "Produto"}
-              fill
-              className="object-cover"
-            />
+          {productImage ? (
+            <Image src={normalizeImageSrc(productImage)} alt={title} fill className="object-cover" />
           ) : (
-            <div className="flex h-full items-center justify-center text-sm text-slate-400">Sem imagem</div>
+            <div className="flex h-full items-center justify-center bg-linear-to-br from-slate-50 to-slate-100 text-sm text-slate-400">
+              {isOrderReview ? "Avaliação do pedido" : "Sem imagem"}
+            </div>
           )}
         </div>
 
@@ -54,20 +60,25 @@ export default function ReviewCard({ review, onReply, onDeleteReply }) {
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="space-y-3">
               <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">
-                  {review?.product?.name || "Produto"}
-                </span>
-                <span className="rounded-full bg-blue-50 px-2.5 py-1 font-medium text-blue-700">
-                  {review?.user?.name || "Cliente"}
-                </span>
-                <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
-                  Pedido #{String(review?.subOrder || "").slice(-6) || "-"}
-                </span>
+                <span className="rounded-full bg-slate-100 px-2.5 py-1 font-medium text-slate-700">{title}</span>
+                <span className="rounded-full bg-blue-50 px-2.5 py-1 font-medium text-blue-700">{customerLabel}</span>
+                {isProductReview ? (
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
+                    Pedido #{String(review?.subOrder || "").slice(-6) || "-"}
+                  </span>
+                ) : (
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 font-medium text-emerald-700">
+                    Avaliação da loja
+                  </span>
+                )}
               </div>
 
               <div className="flex flex-wrap items-center gap-3">
-                <RatingStars rating={review?.rating} />
-                <span className="text-sm font-semibold text-slate-900">{review?.rating}/5</span>
+                <RatingStars rating={primaryRating} />
+                <span className="text-sm font-semibold text-slate-900">{Number(primaryRating || 0).toFixed(1)}/5</span>
+                {secondaryRating != null && (
+                  <span className="text-sm text-slate-600">Pedido {Number(secondaryRating || 0).toFixed(1)}/5</span>
+                )}
                 <span className="text-xs text-slate-500">Criada em {formatDateTime(review?.createdAt)}</span>
               </div>
 
@@ -80,47 +91,56 @@ export default function ReviewCard({ review, onReply, onDeleteReply }) {
                 <span className="rounded-full bg-slate-100 px-2.5 py-1">
                   Atualizada em {formatDateTime(review?.updatedAt)}
                 </span>
+                {isOrderReview && (
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1">
+                    Pedido #{String(review?.order || "").slice(-6) || "-"}
+                  </span>
+                )}
               </div>
             </div>
 
-            <div className="flex gap-2">
-              <Button variant="outline" onClick={() => onReply(review)} className="rounded-full">
-                {hasReply ? "Editar resposta" : "Responder"}
-              </Button>
-              {hasReply && (
-                <Button
-                  variant="ghost"
-                  onClick={() => onDeleteReply(review)}
-                  className="rounded-full text-rose-600 hover:bg-rose-50"
-                >
-                  Remover resposta
+            {isProductReview && (
+              <div className="flex gap-2">
+                <Button variant="outline" onClick={() => onReply(review)} className="rounded-full">
+                  {hasReply ? "Editar resposta" : "Responder"}
                 </Button>
-              )}
-            </div>
-          </div>
-
-          <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-            <div className="flex items-center justify-between gap-3">
-              <p className="text-sm font-semibold text-slate-900">Resposta da loja</p>
-              <span
-                className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.2em] ${hasReply ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
-              >
-                {hasReply ? "Respondido" : "Pendente"}
-              </span>
-            </div>
-
-            {hasReply ? (
-              <div className="mt-3 space-y-2">
-                <p className="text-sm leading-6 text-slate-700">{review.sellerReply.comment}</p>
-                <p className="text-xs text-slate-500">
-                  Respondido em {formatDateTime(review.sellerReply.repliedAt)}
-                  {review.sellerReply.editedAt ? ` • editado em ${formatDateTime(review.sellerReply.editedAt)}` : ""}
-                </p>
+                {hasReply && (
+                  <Button
+                    variant="ghost"
+                    onClick={() => onDeleteReply(review)}
+                    className="rounded-full text-rose-600 hover:bg-rose-50"
+                  >
+                    Remover resposta
+                  </Button>
+                )}
               </div>
-            ) : (
-              <p className="mt-3 text-sm text-slate-500">Ainda não existe resposta para esta avaliação.</p>
             )}
           </div>
+
+          {isProductReview && (
+            <div className="mt-5 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-sm font-semibold text-slate-900">Resposta da loja</p>
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-[0.2em] ${hasReply ? "bg-emerald-50 text-emerald-700" : "bg-amber-50 text-amber-700"}`}
+                >
+                  {hasReply ? "Respondido" : "Pendente"}
+                </span>
+              </div>
+
+              {hasReply ? (
+                <div className="mt-3 space-y-2">
+                  <p className="text-sm leading-6 text-slate-700">{review.sellerReply.comment}</p>
+                  <p className="text-xs text-slate-500">
+                    Respondido em {formatDateTime(review.sellerReply.repliedAt)}
+                    {review.sellerReply.editedAt ? ` • editado em ${formatDateTime(review.sellerReply.editedAt)}` : ""}
+                  </p>
+                </div>
+              ) : (
+                <p className="mt-3 text-sm text-slate-500">Ainda não existe resposta para esta avaliação.</p>
+              )}
+            </div>
+          )}
         </div>
       </div>
     </article>

@@ -12,4 +12,14 @@ export const orderService = {
     const response = await api.get(`/orders/${orderId}`);
     return extractData(response);
   },
+
+  async cancelOrder(orderId) {
+    const response = await api.post(`/orders/${orderId}/cancel`);
+    return extractData(response);
+  },
+
+  async confirmOrderReceived(orderId, payload = {}) {
+    const response = await api.post(`/orders/${orderId}/received`, payload);
+    return extractData(response);
+  },
 };

@@ -6,7 +6,7 @@ const UPLOAD_ACCESS_BY_CONTEXT = {
   product: new Set(["seller", "admin"]),
   "store-logo": new Set(["customer", "seller", "admin"]),
   "store-banner": new Set(["customer", "seller", "admin"]),
-  review: new Set(["customer", "admin"]),
+  review: new Set(["customer", "admin", "seller"]),
   profile: new Set(["customer", "seller", "admin"]),
   banner: new Set(["admin"]),
   chat: new Set(["customer", "seller", "admin"]),

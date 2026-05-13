@@ -49,6 +49,12 @@ export const setSessionCookies = (res, accessToken, refreshToken) => {
 };
 
 export const startUserSession = async (req, res, userId) => {
+  const user = await User.findById(userId).select("_id status");
+
+  if (!user || user.status !== accountStatuses.ACTIVE) {
+    throw createHttpError("Usuário inválido ou inativo", 403, undefined, "AUTH_USER_INACTIVE");
+  }
+
   const { accessToken, refreshToken } = generateTokens(userId);
   await setRefreshToken(userId, refreshToken);
   await syncGuestCartToUserCart(userId, req.cookies.guestCartId);

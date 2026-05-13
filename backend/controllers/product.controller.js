@@ -23,8 +23,8 @@ export const getMyStoreProducts = async (req, res, next) => {
 };
 
 export const allProducts = async (req, res, next) => {
-  const { categoryId, search, page, limit } = req.validatedQuery ?? {};
-  const visibleProducts = await getVisibleProducts({ categoryId, search, page, limit });
+  const { categoryId, search, location, page, limit } = req.validatedQuery ?? {};
+  const visibleProducts = await getVisibleProducts({ categoryId, search, location, page, limit });
 
   return sendSuccess(res, 200, "Produtos listados com sucesso", visibleProducts);
 };
@@ -66,7 +66,7 @@ export const updateProduct = async (req, res, next) => {
     throw createHttpError("Acesso proibido - Permissão insuficiente", 403, undefined, "PRODUCT_MANAGE_FORBIDDEN");
   }
 
-  const updatedProduct = await updateProductAndPopulate(product, req.body);
+  const updatedProduct = await updateProductAndPopulate(product, req.body, req.user);
 
   return sendSuccess(res, 200, "Produto atualizado com sucesso", updatedProduct);
 };

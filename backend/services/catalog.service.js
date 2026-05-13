@@ -12,7 +12,7 @@ import {
 } from "../helpers/slugUnique.helper.js";
 import { notifyProductDiscountForCustomers, notifyPromotionForCustomers } from "./notification.service.js";
 
-const PRODUCT_RESPONSE_POPULATE = "store name slug owner status";
+const PRODUCT_RESPONSE_POPULATE = "store name slug owner status reputation";
 const MAX_SLUG_RETRIES = 5;
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
@@ -30,6 +30,18 @@ const VARIANT_FIELDS = [
   "width",
   "height",
 ];
+
+const clearBlockMetadata = (document) => {
+  document.blockedBy = null;
+  document.blockedRole = null;
+  document.blockedAt = null;
+};
+
+const setBlockMetadata = (document, actor) => {
+  document.blockedBy = actor?._id ?? null;
+  document.blockedRole = actor?.role ?? null;
+  document.blockedAt = new Date();
+};
 
 const populateProductById = (productId) =>
   Product.findById(productId)
@@ -258,7 +270,7 @@ const syncProductVariants = async (productId, mainVariantPayload, extraVariantsP
   }
 };
 
-export const getVisibleProducts = async ({ categoryId, search, page, limit } = {}) => {
+export const getVisibleProducts = async ({ categoryId, search, location, page, limit } = {}) => {
   const pagination = normalizePagination({ page, limit });
   const activeStoreIds = await Store.find({ status: "active" }).distinct("_id");
 
@@ -273,6 +285,23 @@ export const getVisibleProducts = async ({ categoryId, search, page, limit } = {
 
   if (categoryId) {
     filters.category = categoryId;
+  }
+
+  if (location) {
+    const term = location.trim();
+    const locationStoreIds = await Address.find({
+      store: { $ne: null },
+      city: { $regex: term, $options: "i" },
+    }).distinct("store");
+
+    const activeStoreIdSet = new Set(activeStoreIds.map((storeId) => String(storeId)));
+    const matchingStoreIds = locationStoreIds.filter((storeId) => activeStoreIdSet.has(String(storeId)));
+
+    if (matchingStoreIds.length === 0) {
+      return buildPaginationResult([], 0, pagination.page, pagination.limit);
+    }
+
+    filters.store = { $in: matchingStoreIds };
   }
 
   if (search) {
@@ -293,7 +322,7 @@ export const getVisibleProducts = async ({ categoryId, search, page, limit } = {
       .limit(pagination.limit)
       .populate({
         path: "store",
-        select: "name slug owner status",
+        select: "name slug owner status reputation",
         match: { status: "active" },
       })
       .populate("category", "name status")
@@ -340,7 +369,7 @@ export const getProductsByStoreOwner = async (ownerId, { categoryId, search, sta
       .limit(pagination.limit)
       .populate({
         path: "store",
-        select: "name slug owner status",
+        select: "name slug owner status reputation",
       })
       .populate("category", "name status")
       .populate("mainVariant")
@@ -521,6 +550,15 @@ export const updateStoreStatusForOwner = async (ownerId, status) => {
   const store = await findAnyStoreByOwnerOrThrow(ownerId);
 
   if (![accountStatuses.ACTIVE, accountStatuses.SUSPENDED].includes(store.status)) {
+    if (store.status === accountStatuses.BLOCKED && store.blockedRole === "admin") {
+      throw createHttpError(
+        "A loja foi bloqueada por um admin e não pode ser reativada pelo seller",
+        403,
+        undefined,
+        "STORE_ADMIN_BLOCKED",
+      );
+    }
+
     throw createHttpError(
       "A loja não pode trocar de status neste momento",
       403,
@@ -534,6 +572,11 @@ export const updateStoreStatusForOwner = async (ownerId, status) => {
   }
 
   store.status = status;
+
+  if (status === accountStatuses.ACTIVE || status === accountStatuses.SUSPENDED) {
+    clearBlockMetadata(store);
+  }
+
   await store.save();
 
   return populateStoreDetails(Store.findById(store._id));
@@ -650,7 +693,7 @@ export const findActiveProductOrThrow = async (productId, { populateStoreOwner =
   return product;
 };
 
-export const updateProductAndPopulate = async (product, payload) => {
+export const updateProductAndPopulate = async (product, payload, actor = null) => {
   const previousHighlighted = Boolean(product.highlighted);
   const previousMainVariant = await ProductVariant.findOne({ product: product._id, isMainVariant: true })
     .select("price")
@@ -662,6 +705,26 @@ export const updateProductAndPopulate = async (product, payload) => {
   const removeVariantIds = extractRemoveVariantIds(payload);
 
   await ensureCategoryIsActiveOrThrow(productPayload.category?.[0]);
+
+  if (
+    payload.status === "active" &&
+    product.status === "blocked" &&
+    product.blockedRole === "admin" &&
+    actor?.role !== "admin"
+  ) {
+    throw createHttpError(
+      "O produto foi bloqueado por um admin e não pode ser reativado pelo seller",
+      403,
+      undefined,
+      "PRODUCT_ADMIN_BLOCKED",
+    );
+  }
+
+  if (payload.status === "blocked" && payload.status !== product.status) {
+    setBlockMetadata(product, actor);
+  } else if (payload.status === "active" && payload.status !== product.status) {
+    clearBlockMetadata(product);
+  }
 
   if (mainVariantPayload?.price !== undefined) {
     productPayload.basePrice = mainVariantPayload.price;

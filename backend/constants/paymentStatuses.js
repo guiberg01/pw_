@@ -5,4 +5,5 @@ export const paymentStatuses = Object.freeze({
   REQUIRES_ACTION: "requires_action",
   REFUNDED: "refunded",
   PARTIALLY_REFUNDED: "partially_refunded",
+  CANCELLED: "cancelled",
 });

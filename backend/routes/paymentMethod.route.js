@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createMyPaymentMethod,
+  createMyPaymentMethodSetupIntent,
   deleteMyPaymentMethod,
   getMyPaymentMethodById,
   getMyPaymentMethods,
@@ -20,6 +21,7 @@ const router = Router();
 router.use(isLoggedIn);
 
 router.get("/", getMyPaymentMethods);
+router.post("/setup-intent", createMyPaymentMethodSetupIntent);
 router.get("/:id", validateParams(paymentMethodIdParamSchema), getMyPaymentMethodById);
 router.post("/", validateBody(createPaymentMethodSchema), createMyPaymentMethod);
 router.put(

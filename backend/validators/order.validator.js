@@ -17,9 +17,7 @@ const dateFromQueryBoundary = (boundary) =>
     }
 
     if (DATE_ONLY_PATTERN.test(trimmed)) {
-      return boundary === "start"
-        ? new Date(`${trimmed}T00:00:00.000Z`)
-        : new Date(`${trimmed}T23:59:59.999Z`);
+      return boundary === "start" ? new Date(`${trimmed}T00:00:00.000Z`) : new Date(`${trimmed}T23:59:59.999Z`);
     }
 
     return trimmed;
@@ -27,6 +25,10 @@ const dateFromQueryBoundary = (boundary) =>
 
 export const orderIdParamSchema = z.object({
   id: mongoIdSchema,
+});
+
+export const confirmOrderReceiptSchema = z.object({
+  subOrderId: mongoIdSchema.optional(),
 });
 
 export const orderListQuerySchema = paginationQuerySchema

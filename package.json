@@ -12,6 +12,7 @@
   "license": "ISC",
   "type": "module",
   "dependencies": {
+    "@stripe/react-stripe-js": "^6.3.0",
     "axios": "^1.15.1",
     "bcrypt": "^5.1.0",
     "cookie-parser": "^1.4.7",

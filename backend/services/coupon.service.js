@@ -34,6 +34,13 @@ const buildPaginationResult = (items, total, page, limit) => ({
   },
 });
 
+const populateCouponQuery = (query) =>
+  query
+    .populate("stores", "name slug status")
+    .populate("categories", "name slug status")
+    .populate("products", "name slug status")
+    .populate("createdBy", "name email role");
+
 export const markExpiredCoupons = async (now = new Date()) => {
   return Coupon.updateMany({ status: "active", expiresAt: { $ne: null, $lte: now } }, { $set: { status: "expired" } });
 };
@@ -49,13 +56,7 @@ export const findAllCoupons = async ({ page, limit } = {}) => {
   };
 
   const [items, total] = await Promise.all([
-    Coupon.find(filters)
-      .sort({ createdAt: -1 })
-      .skip(skip)
-      .limit(pagination.limit)
-      .populate("stores", "name slug status")
-      .populate("categories", "name status")
-      .lean(),
+    populateCouponQuery(Coupon.find(filters)).sort({ createdAt: -1 }).skip(skip).limit(pagination.limit).lean(),
     Coupon.countDocuments(filters),
   ]);
 
@@ -65,14 +66,13 @@ export const findAllCoupons = async ({ page, limit } = {}) => {
 export const findCouponById = async (id) => {
   const now = new Date();
 
-  const coupon = await Coupon.findOne({
-    _id: id,
-    status: { $in: activeCouponStatuses },
-    ...validByExpirationFilter(now),
-  })
-    .populate("stores", "name slug status")
-    .populate("categories", "name status")
-    .lean();
+  const coupon = await populateCouponQuery(
+    Coupon.findOne({
+      _id: id,
+      status: { $in: activeCouponStatuses },
+      ...validByExpirationFilter(now),
+    }),
+  ).lean();
 
   if (!coupon) {
     const expiredCoupon = await Coupon.findOne({
@@ -87,6 +87,63 @@ export const findCouponById = async (id) => {
       throw createHttpError("Cupom expirado", 404, undefined, "COUPON_EXPIRED");
     }
 
+    throw createHttpError("Cupom não encontrado", 404, undefined, "COUPON_NOT_FOUND");
+  }
+
+  return coupon;
+};
+
+export const listCouponsForAdmin = async ({ status, search, page, limit } = {}) => {
+  const pagination = normalizePagination({ page, limit });
+  const skip = (pagination.page - 1) * pagination.limit;
+  const filters = {};
+
+  if (status) {
+    filters.status = status;
+  }
+
+  if (search) {
+    filters.code = { $regex: search, $options: "i" };
+  }
+
+  const [items, total] = await Promise.all([
+    populateCouponQuery(Coupon.find(filters)).sort({ createdAt: -1 }).skip(skip).limit(pagination.limit).lean(),
+    Coupon.countDocuments(filters),
+  ]);
+
+  return buildPaginationResult(items, total, pagination.page, pagination.limit);
+};
+
+export const updateCouponById = async (id, data) => {
+  try {
+    const coupon = await Coupon.findByIdAndUpdate(id, data, {
+      new: true,
+      runValidators: true,
+    });
+
+    if (!coupon) {
+      throw createHttpError("Cupom não encontrado", 404, undefined, "COUPON_NOT_FOUND");
+    }
+
+    return populateCouponQuery(Coupon.findById(coupon._id)).lean();
+  } catch (error) {
+    if (isDuplicateFieldError(error, "code")) {
+      throw createHttpError(
+        "Já existe um cupom com esse código",
+        409,
+        { field: "code", value: data?.code },
+        "COUPON_CODE_CONFLICT",
+      );
+    }
+
+    throw error;
+  }
+};
+
+export const deleteCouponById = async (id) => {
+  const coupon = await Coupon.findByIdAndDelete(id);
+
+  if (!coupon) {
     throw createHttpError("Cupom não encontrado", 404, undefined, "COUPON_NOT_FOUND");
   }
 

@@ -1114,14 +1114,13 @@ export default function SellerOnboardingPage() {
                   : "fixed bottom-4 right-4 z-50 w-[calc(100vw-2rem)] max-w-[24rem] md:bottom-6 md:right-6"
               }
             >
-              <Card className="overflow-hidden border-slate-200 bg-white/95 shadow-[0_20px_60px_rgba(15,23,42,0.15)] backdrop-blur">
-                <CardHeader className="border-b border-slate-100 pb-4">
-                  <div className="flex items-start justify-between gap-3">
+              <Card className="overflow-hidden border-slate-200 bg-white/95 gap-0 shadow-[0_20px_60px_rgba(15,23,42,0.15)] backdrop-blur">
+                <CardHeader className="border-b border-slate-100 pb-1!">
+                  <div className="flex items-start justify-between">
                     <div>
                       <CardTitle className="flex items-center gap-2 text-slate-900">
                         <BadgeCheck size={18} /> O que falta fazer
                       </CardTitle>
-                      <CardDescription>Checklist objetivo do que ainda bloqueia a operação completa.</CardDescription>
                     </div>
 
                     {!isOnboardingComplete && (
@@ -1142,7 +1141,7 @@ export default function SellerOnboardingPage() {
                 </CardHeader>
 
                 {isChecklistExpanded && (
-                  <CardContent className="space-y-3 pt-6">
+                  <CardContent className="space-y-3 pt-1!">
                     {onboardingMessages.length > 0 ? (
                       onboardingMessages.map((message) => (
                         <div

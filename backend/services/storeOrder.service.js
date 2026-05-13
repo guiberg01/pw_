@@ -7,14 +7,20 @@ import { findActiveStoreByOwnerOrThrow } from "./catalog.service.js";
 import { buildPaginationResult, buildPaymentView, groupByOrderId } from "../helpers/orderView.helper.js";
 import { subOrderStatuses } from "../constants/subOrderStatuses.js";
 
+const REVENUE_SUB_ORDER_STATUSES = new Set([
+  subOrderStatuses.PAID,
+  subOrderStatuses.PROCESSING,
+  subOrderStatuses.SHIPPING,
+  subOrderStatuses.DELIVERED,
+]);
+
 const ORDER_SELECT_FIELDS =
   "user status totalPriceProducts totalPaidByCustomer totalShippingPrice totalDiscount shippingAddress createdAt updatedAt";
 
 const SUB_ORDER_SELECT_FIELDS =
   "order store items coupon subTotal shippingCost discountAmount platformFee vendorNetAmount status createdAt updatedAt";
 
-const PAYMENT_SELECT_FIELDS =
-  "order status amount currency paymentMethod paidAt refundedAmount createdAt updatedAt";
+const PAYMENT_SELECT_FIELDS = "order status amount currency paymentMethod paidAt refundedAmount createdAt updatedAt";
 
 const sortDirectionFromValue = (sort = "newest") => (sort === "oldest" ? 1 : -1);
 
@@ -57,12 +63,16 @@ const buildOrderLookupFilters = (orderFilters) => {
 const buildSellerOrderSummary = (orders = [], subOrders = []) => {
   const subOrdersByOrderId = groupByOrderId(subOrders);
 
-  return orders.reduce(
+  const summary = orders.reduce(
     (summary, order) => {
       const orderId = order._id.toString();
       const sellerSubOrder = subOrdersByOrderId.get(orderId)?.[0];
 
       if (!sellerSubOrder) {
+        return summary;
+      }
+
+      if (!REVENUE_SUB_ORDER_STATUSES.has(sellerSubOrder.status)) {
         return summary;
       }
 
@@ -80,6 +90,7 @@ const buildSellerOrderSummary = (orders = [], subOrders = []) => {
       orderCount: 0,
       grossRevenue: 0,
       netRevenue: 0,
+      faturamento: 0,
       discountTotal: 0,
       shippingTotal: 0,
       itemsCount: 0,
@@ -94,6 +105,9 @@ const buildSellerOrderSummary = (orders = [], subOrders = []) => {
       },
     },
   );
+
+  summary.faturamento = summary.grossRevenue;
+  return summary;
 };
 
 const buildSellerOrderItem = ({ order, subOrder, paymentView }) => ({
@@ -188,6 +202,7 @@ export const listOrdersForSeller = async (
     ]),
     SubOrder.aggregate([
       ...basePipeline,
+      { $match: { status: { $in: Array.from(REVENUE_SUB_ORDER_STATUSES) } } },
       {
         $addFields: {
           itemCount: {
@@ -235,6 +250,7 @@ export const listOrdersForSeller = async (
         orderCount: Number(aggregateSummary?.orderCount ?? 0),
         grossRevenue: Number(aggregateSummary?.grossRevenue ?? 0),
         netRevenue: Number(aggregateSummary?.netRevenue ?? 0),
+        faturamento: Number(aggregateSummary?.grossRevenue ?? 0),
         discountTotal: Number(aggregateSummary?.discountTotal ?? 0),
         shippingTotal: Number(aggregateSummary?.shippingTotal ?? 0),
         itemsCount: Number(aggregateSummary?.itemsCount ?? 0),
@@ -256,7 +272,9 @@ export const listOrdersForSeller = async (
       .populate("user", "name")
       .select(ORDER_SELECT_FIELDS)
       .lean(),
-    SubOrder.find({ order: { $in: pagedOrderIds }, store: store._id }).select(SUB_ORDER_SELECT_FIELDS).lean(),
+    SubOrder.find({ order: { $in: pagedOrderIds }, store: store._id })
+      .select(SUB_ORDER_SELECT_FIELDS)
+      .lean(),
     Payment.find({ order: { $in: pagedOrderIds } })
       .select(PAYMENT_SELECT_FIELDS)
       .lean(),
@@ -298,6 +316,7 @@ export const listOrdersForSeller = async (
       orderCount: Number(aggregateSummary?.orderCount ?? 0),
       grossRevenue: Number(aggregateSummary?.grossRevenue ?? 0),
       netRevenue: Number(aggregateSummary?.netRevenue ?? 0),
+      faturamento: Number(aggregateSummary?.grossRevenue ?? 0),
       discountTotal: Number(aggregateSummary?.discountTotal ?? 0),
       shippingTotal: Number(aggregateSummary?.shippingTotal ?? 0),
       itemsCount: Number(aggregateSummary?.itemsCount ?? 0),

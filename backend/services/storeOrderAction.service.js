@@ -14,7 +14,7 @@ const SELLER_STATUS_FLOW = {
   [subOrderStatuses.PENDING]: [],
   [subOrderStatuses.PAID]: [subOrderStatuses.PROCESSING],
   [subOrderStatuses.PROCESSING]: [subOrderStatuses.SHIPPING],
-  [subOrderStatuses.SHIPPING]: [subOrderStatuses.DELIVERED],
+  [subOrderStatuses.SHIPPING]: [],
   [subOrderStatuses.DELIVERED]: [],
   [subOrderStatuses.CANCELLED]: [],
   [subOrderStatuses.FAILED]: [],
@@ -125,7 +125,10 @@ export const updateSellerOrderStatus = async (ownerId, orderId, { status }) => {
 
   try {
     await session.withTransaction(async () => {
-      const subOrder = await SubOrder.findOne({ order: orderId, store: store._id }).select("_id status").session(session).lean();
+      const subOrder = await SubOrder.findOne({ order: orderId, store: store._id })
+        .select("_id status")
+        .session(session)
+        .lean();
 
       if (!subOrder) {
         throw createHttpError("Pedido não encontrado", 404, undefined, "SELLER_ORDER_NOT_FOUND");

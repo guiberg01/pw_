@@ -202,7 +202,7 @@ export default function ReviewsDashboard() {
           description="Revise suas avaliações, ajuste notas e mantenha seu histórico de feedback organizado."
           actions={
             <Button
-              className="text-blue-400 bg-transparent border border-blue-400 absolute top-2 right-2 hover:bg-transparent transition-shadow hover:shadow-[inset_0_-4px_8px_rgba(59,130,246,0.4)] hover:text-blue-300 hover:border-blue-300"
+              className="text-blue-400 bg-transparent border border-blue-400 absolute -top-2 -right-2 hover:bg-transparent transition-shadow hover:shadow-[inset_0_-4px_8px_rgba(59,130,246,0.4)] hover:text-blue-300 hover:border-blue-300"
               variant="outline"
               onClick={() => void loadReviewsRef.current?.()}
             >

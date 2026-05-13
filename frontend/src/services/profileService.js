@@ -12,4 +12,9 @@ export const profileService = {
     const response = await api.patch("/auth/me", payload);
     return extractData(response);
   },
+
+  async deleteMyProfile() {
+    const response = await api.delete("/auth/me");
+    return extractData(response);
+  },
 };

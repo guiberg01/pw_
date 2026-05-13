@@ -61,6 +61,20 @@ const storeSchema = new mongoose.Schema(
       enum: Object.values(accountStatuses),
       default: accountStatuses.ACTIVE,
     },
+    blockedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    blockedRole: {
+      type: String,
+      enum: ["admin", "seller"],
+      default: null,
+    },
+    blockedAt: {
+      type: Date,
+      default: null,
+    },
     reputation: {
       type: Number,
       default: 0,
