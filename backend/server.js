@@ -3,7 +3,6 @@ import dotenv from "dotenv";
 import cookieParser from "cookie-parser";
 import cors from "cors";
 import helmet from "helmet";
-import mongoose from "mongoose";
 import { createHttpError } from "./helpers/httpError.js";
 import { errorHandler } from "./middleware/errorHandler.middleware.js";
 import { createRateLimit } from "./middleware/rateLimit.middleware.js";
@@ -172,38 +171,6 @@ const bootstrap = async () => {
     validateRequiredEnv();
     await ensureUploadDirectoryExists();
     await connectDB();
-
-    const dbCollection = mongoose.connection.db.collection("stores");
-    await dbCollection.updateMany({ cnpj: null }, { $unset: { cnpj: "" } });
-    const indexes = await dbCollection.indexes();
-    const cnpjIndex = indexes.find((index) => index?.name === "cnpj_1");
-
-    if (cnpjIndex) {
-      const hasExpectedSparse = Boolean(cnpjIndex?.sparse) && Boolean(cnpjIndex?.unique);
-
-      if (!hasExpectedSparse) {
-        await dbCollection.dropIndex("cnpj_1");
-      }
-    }
-
-    await dbCollection.createIndex(
-      { cnpj: 1 },
-      {
-        name: "cnpj_1",
-        unique: true,
-        sparse: true,
-      },
-    );
-
-    // Remove índice antigo do ProductVariant (sku único global) e cria novo (único por produto)
-    const productVariantCollection = mongoose.connection.db.collection("productvariants");
-    const pvIndexes = await productVariantCollection.indexes();
-    const oldSkuIndex = pvIndexes.find((index) => index?.name === "sku_1");
-
-    if (oldSkuIndex) {
-      console.log("Removendo índice antigo do ProductVariant: sku_1");
-      await productVariantCollection.dropIndex("sku_1");
-    }
 
     httpServer = app.listen(PORT, () => {
       console.log(`Server rodando em: http://localhost:${PORT}`);
