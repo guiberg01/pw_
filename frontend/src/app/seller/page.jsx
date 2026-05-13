@@ -24,6 +24,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { storeService } from "@/services/storeService";
+import { storeOrderService } from "@/services/storeOrderService";
 import ProductListClient from "@/components/product/ProductListClient";
 import StoreSummarySection from "@/components/seller/store/StoreSummarySection";
 import { normalizeImageSrc } from "@/lib/imageUtils";
@@ -52,6 +53,7 @@ export default function SellerPage() {
   const [store, setStore] = useState(null);
   const [stripeStatus, setStripeStatus] = useState(null);
   const [melhorEnvioStatus, setMelhorEnvioStatus] = useState(null);
+  const [salesSummary, setSalesSummary] = useState(null);
 
   const loadSellerProducts = useCallback(async () => {
     const res = await storeService.getMyStoreProducts({ page: 1, limit: 100 });
@@ -127,6 +129,41 @@ export default function SellerPage() {
     };
   }, [verifyAndLoad]);
 
+  useEffect(() => {
+    if (!store) return;
+
+    let cancelled = false;
+    const now = new Date();
+    const firstDay = new Date(now.getFullYear(), now.getMonth(), 1);
+    const createdFrom = firstDay.toISOString().slice(0, 10);
+    const createdTo = now.toISOString().slice(0, 10);
+
+    const loadSalesSummary = async () => {
+      try {
+        const data = await storeOrderService.listMyStoreOrders({
+          page: 1,
+          limit: 1,
+          createdFrom,
+          createdTo,
+        });
+
+        if (!cancelled) {
+          setSalesSummary(data?.summary ?? null);
+        }
+      } catch {
+        if (!cancelled) {
+          setSalesSummary(null);
+        }
+      }
+    };
+
+    void loadSalesSummary();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [store]);
+
   if (isLoadingAuth) {
     return (
       <main className="min-h-[calc(100vh-5rem)] bg-[radial-gradient(circle_at_top,#eff6ff,#f8fafc_45%,#eef2ff_100%)] px-4 py-14">
@@ -198,8 +235,20 @@ export default function SellerPage() {
           <TabsContent value="merchant" className="space-y-8">
             {/* Stats */}
             <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-              <StatCard icon={ShoppingCart} label="Pedidos este mês" value="0" trend="↑ 0 desde ontem" />
-              <StatCard icon={TrendingUp} label="Faturamento" value="R$ 0,00" trend="↑ 0% este mês" />
+              <StatCard
+                icon={ShoppingCart}
+                label="Pedidos este mês"
+                value={String(salesSummary?.orderCount ?? 0)}
+                trend="Pedidos com status de venda válidos"
+              />
+              <StatCard
+                icon={TrendingUp}
+                label="Faturamento"
+                value={new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" }).format(
+                  Number(salesSummary?.faturamento ?? salesSummary?.grossRevenue ?? 0),
+                )}
+                trend="Baseado nos pedidos pagos/em andamento"
+              />
               <StatCard icon={Package} label="Produtos listados" value="0" />
               <StatCard icon={Eye} label="Visitas" value={store.visitsCount || 0} />
             </div>

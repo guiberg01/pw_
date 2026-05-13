@@ -21,7 +21,7 @@ import Link from "next/link";
 const STATUS_FLOW = {
   paid: "processing",
   processing: "shipping",
-  shipping: "delivered",
+  shipping: null,
 };
 
 const STATUS_LABELS = {
@@ -172,10 +172,25 @@ export default function SellerOrdersDashboard() {
 
     setIsGeneratingLabel(true);
     try {
-      await storeOrderService.generateShippingLabel(subOrderId);
+      const labelResult = await storeOrderService.generateShippingLabel(subOrderId);
       toast.success("Etiqueta gerada com sucesso");
       const detail = await storeOrderService.getMyStoreOrderById(selectedOrderId);
-      setSelectedOrder(detail);
+      const labelUrlResult = await storeOrderService.getShippingLabel(subOrderId).catch(() => null);
+
+      setSelectedOrder({
+        ...detail,
+        subOrder: {
+          ...detail.subOrder,
+          shipping: {
+            ...(detail.subOrder?.shipping ?? {}),
+            labelUrl: labelUrlResult?.labelUrl ?? labelResult?.labelUrl ?? detail.subOrder?.shipping?.labelUrl ?? null,
+            trackingCode:
+              labelUrlResult?.trackingCode ?? labelResult?.tracking ?? detail.subOrder?.shipping?.trackingCode ?? null,
+            status: labelUrlResult?.status ?? labelResult?.status ?? detail.subOrder?.shipping?.status ?? null,
+            updatedAt: labelUrlResult?.updatedAt ?? detail.subOrder?.shipping?.updatedAt ?? null,
+          },
+        },
+      });
     } catch (error) {
       toast.error(error?.response?.data?.message || "Não foi possível gerar etiqueta");
     } finally {
@@ -185,10 +200,26 @@ export default function SellerOrdersDashboard() {
 
   const summaryCards = useMemo(
     () => [
-      { label: "Pedidos", value: String(summary?.orderCount ?? 0) },
-      { label: "Itens vendidos", value: String(summary?.itemsCount ?? 0) },
-      { label: "Receita bruta", value: formatCurrency(summary?.grossRevenue ?? 0) },
-      { label: "Receita líquida", value: formatCurrency(summary?.netRevenue ?? 0) },
+      {
+        label: "Pedidos",
+        value: String(summary?.orderCount ?? 0),
+        help: "Quantidade de pedidos distintos com itens do seller no período filtrado.",
+      },
+      {
+        label: "Itens vendidos",
+        value: String(summary?.itemsCount ?? 0),
+        help: "Soma das unidades vendidas em todos os subpedidos listados.",
+      },
+      {
+        label: "Receita bruta",
+        value: formatCurrency(summary?.grossRevenue ?? 0),
+        help: "Valor total dos itens antes de desconto, frete e taxas da plataforma.",
+      },
+      {
+        label: "Receita líquida",
+        value: formatCurrency(summary?.netRevenue ?? 0),
+        help: "Valor estimado a receber após desconto de cupom e regra de comissão da loja.",
+      },
     ],
     [summary],
   );
@@ -228,6 +259,7 @@ export default function SellerOrdersDashboard() {
             <CardContent className="pt-5">
               <p className="text-xs font-bold uppercase tracking-[0.28em] text-slate-500">{card.label}</p>
               <p className="mt-3 text-2xl font-black text-slate-950">{card.value}</p>
+              <p className="mt-2 text-xs leading-5 text-slate-500">{card.help}</p>
             </CardContent>
           </Card>
         ))}
@@ -451,17 +483,25 @@ export default function SellerOrdersDashboard() {
                   </div>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase text-slate-500">Bruto</p>
+                  <p className="text-[11px] font-semibold uppercase text-slate-500">Bruto dos produtos</p>
                   <p className="mt-2 text-sm font-bold text-slate-900">
                     {formatCurrency(selectedOrder.subOrder?.subTotal ?? 0)}
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
-                  <p className="text-[11px] font-semibold uppercase text-slate-500">Líquido</p>
+                  <p className="text-[11px] font-semibold uppercase text-slate-500">Repasse estimado</p>
                   <p className="mt-2 text-sm font-bold text-slate-900">
                     {formatCurrency(selectedOrder.subOrder?.vendorNetAmount ?? 0)}
                   </p>
                 </div>
+              </div>
+
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4 text-xs leading-5 text-blue-800">
+                <p className="font-semibold">Como ler esses valores</p>
+                <p className="mt-1">
+                  O bruto considera só os produtos. O repasse pode incluir o frete cobrado do cliente e descontar a taxa
+                  da plataforma, por isso ele pode ficar acima do subtotal dos itens. O painel abaixo detalha isso.
+                </p>
               </div>
 
               <div className="rounded-2xl border border-slate-200 bg-white p-4">
@@ -496,6 +536,9 @@ export default function SellerOrdersDashboard() {
                     <p className="mt-1">
                       Etiqueta: {selectedOrder.subOrder?.shipping?.labelUrl ? "Disponível" : "Não gerada"}
                     </p>
+                    <p className="mt-2 text-[11px] leading-5 text-slate-500">
+                      Tracking depende da transportadora; a etiqueta deve aparecer assim que o backend devolver o PDF.
+                    </p>
                   </div>
                   <div className="flex flex-wrap items-center gap-2">
                     <Button
@@ -509,6 +552,40 @@ export default function SellerOrdersDashboard() {
                         <Truck className="h-4 w-4" />
                       )}
                       Gerar etiqueta
+                    </Button>
+                    <Button
+                      variant="outline"
+                      onClick={async () => {
+                        if (!selectedOrder?.subOrder?.id) return;
+                        const label = await storeOrderService
+                          .getShippingLabel(selectedOrder.subOrder.id)
+                          .catch(() => null);
+                        if (label) {
+                          setSelectedOrder((current) =>
+                            current
+                              ? {
+                                  ...current,
+                                  subOrder: {
+                                    ...current.subOrder,
+                                    shipping: {
+                                      ...(current.subOrder?.shipping ?? {}),
+                                      labelUrl: label.labelUrl ?? current.subOrder?.shipping?.labelUrl ?? null,
+                                      trackingCode:
+                                        label.trackingCode ?? current.subOrder?.shipping?.trackingCode ?? null,
+                                      status: label.status ?? current.subOrder?.shipping?.status ?? null,
+                                      updatedAt: label.updatedAt ?? current.subOrder?.shipping?.updatedAt ?? null,
+                                    },
+                                  },
+                                }
+                              : current,
+                          );
+                          toast.success("Etiqueta atualizada");
+                        } else {
+                          toast.info("Etiqueta ainda não está disponível");
+                        }
+                      }}
+                    >
+                      Atualizar etiqueta
                     </Button>
                     {selectedOrder.subOrder?.shipping?.labelUrl && (
                       <Button asChild variant="outline">
