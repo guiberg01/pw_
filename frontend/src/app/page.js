@@ -1,9 +1,10 @@
 import { cookies } from "next/headers";
-import { Card, CardContent } from "@/components/ui/card";
-import { productService } from "@/services/productService";
-import Link from "next/link";
+//import { Card, CardContent } from "@/components/ui/card";
+//import { productService } from "@/services/productService";
+/*import Link from "next/link";
 import Image from "next/image";
-import { BannerSection } from "@/components/home/BannerSection";
+import { BannerSection } from "@/components/home/BannerSection";*/
+import HomeClient from "@/components/home/HomeClient";
 
 export const metadata = {
   title: "TánaMão - Home",
@@ -11,12 +12,12 @@ export const metadata = {
     "Bem-vindo à TánaMão! Descubra os melhores produtos com descontos incríveis. Compre agora e aproveite as ofertas exclusivas!",
 };
 
-export default async function Home() {
+export default async function HomePage() {
   const cookieStore = await cookies();
   const isAdmin = cookieStore.get("userRole")?.value === "admin";
-  const produtos = await productService.getAllProducts();
+  //const produtos = await productService.getAllProducts();
 
-  return (
+  return <HomeClient isAdmin={isAdmin} />; /*
     <main className="min-h-screen bg-slate-100">
       <BannerSection isAdmin={isAdmin} />
       <div className="max-w-7xl mx-auto p-4 md:p-8 space-y-8 ">
@@ -91,5 +92,5 @@ export default async function Home() {
         )}
       </div>
     </main>
-  );
+  );*/
 }

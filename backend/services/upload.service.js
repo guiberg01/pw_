@@ -105,8 +105,8 @@ export const buildUploadImageResponse = ({ req, file }) => {
   }
 
   const context = resolveUploadContext(req);
-  const baseUrl = resolvePublicBaseUrl(req);
-  const imageUrl = `${baseUrl}/uploads/${file.filename}`;
+
+  const imageUrl = file.path;
 
   return {
     context,

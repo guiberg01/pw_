@@ -259,7 +259,7 @@ export function BannerSection({ isAdmin = false }) {
   };
 
   return (
-    <section className="space-y-4 pb-8 bg-[#1a4f9c] relative after:content[''] after:absolute after:bottom-0 after:left-0 after:h-32 after:w-full after:shadow-[inset_0_-80px_18px_-36px_#f1f5f9]">
+    <section className="space-y-4 pb-8 bg-slate-200  relative after:content[''] after:hidden after:absolute after:bottom-0 after:left-0 after:h-32 after:w-full after:shadow-[inset_0_-80px_18px_-36px_#f1f5f9]">
       <div className="relative overflow-hidden">
         {isAdmin && (
           <div className="absolute right-4 top-4 z-20 flex flex-wrap items-center gap-2 rounded-2xl border border-white/20 bg-slate-950/35 p-2 text-white shadow-2xl backdrop-blur-md">
@@ -292,7 +292,7 @@ export function BannerSection({ isAdmin = false }) {
             </div>
           </div>
         ) : currentBanner ? (
-          <div className="relative min-h-55 md:min-h-90">
+          <div className="relative min-h-55 h-[70vh] md:min-h-90">
             <a href={currentBanner.linkUrl} target="_blank" rel="noreferrer" className="block h-full w-full">
               <Image
                 src={getBannerImage(currentBanner)}
