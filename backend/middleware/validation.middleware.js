@@ -5,13 +5,21 @@ const validate = (schema, target) => {
     const result = schema.safeParse(req[target]);
 
     if (!result.success) {
+      const flattened = result.error.flatten();
+      const fieldErrorMessages = Object.entries(flattened.fieldErrors).reduce((acc, [field, errors]) => {
+        acc[field] = errors || [];
+        return acc;
+      }, {});
+
       const validationError = createHttpError(
-        "Requisição inválida - Falha na validação",
+        `Requisição inválida - Falha na validação (${target})`,
         400,
-        undefined,
+        {
+          receivedData: req[target],
+          fieldErrors: fieldErrorMessages,
+        },
         "REQUEST_VALIDATION_FAILED",
       );
-      validationError.details = result.error.flatten();
       return next(validationError);
     }
 
