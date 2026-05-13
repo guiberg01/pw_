@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   Search,
   User,
@@ -12,6 +12,7 @@ import {
   Star,
   Heart,
   Headset,
+  Shield,
   LogOut,
   Plus,
   Menu,
@@ -32,6 +33,7 @@ export function Header({
   userRole = null,
 }) {
   const router = useRouter();
+  const pathname = usePathname();
 
   const [location, setLocation] = useState(initialLocation);
   const [isLoading, setIsLoading] = useState(false);
@@ -39,6 +41,7 @@ export function Header({
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [categories, setCategories] = useState([]);
   const [isCategoriesOpen, setIsCategoriesOpen] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
 
   const saveLocationCookie = (newLocation) => {
     const safeLocation = encodeURIComponent(newLocation);
@@ -154,32 +157,36 @@ export function Header({
   const handleLocationClick = () => {
     setIsLoading(true);
 
+    const fallbackCity = location?.includes("Descobrir") ? "" : location.replace(" e região", "");
+
     if ("geolocation" in navigator) {
       navigator.geolocation.getCurrentPosition(
         async (position) => {
           const { latitude, longitude } = position.coords;
+          let city = fallbackCity;
+
           try {
             const res = await fetch(
               `https://nominatim.openstreetmap.org/reverse?format=json&lat=${latitude}&lon=${longitude}`,
             );
             const data = await res.json();
-            const city = data.address.city || data.address.town || "Sua região";
+            city = data.address.city || data.address.town || city || "Sua região";
 
             const newLocation = `${city} e região`;
             setLocation(newLocation);
             saveLocationCookie(newLocation);
           } catch (e) {}
 
-          router.push(`/produtos-perto-de-mim?lat=${latitude}&lon=${longitude}`);
+          router.push(city ? `/products?location=${encodeURIComponent(city)}` : "/products");
           setIsLoading(false);
         },
         () => {
           setIsLoading(false);
-          router.push("/produtos-perto-de-mim");
+          router.push(fallbackCity ? `/products?location=${encodeURIComponent(fallbackCity)}` : "/products");
         },
       );
     } else {
-      router.push("/produtos-perto-de-mim");
+      router.push(fallbackCity ? `/products?location=${encodeURIComponent(fallbackCity)}` : "/products");
     }
   };
 
@@ -195,7 +202,26 @@ export function Header({
     }
   };
 
+  const submitSearch = () => {
+    const term = searchTerm.trim();
+
+    if (!term) return;
+
+    router.push(`/products?search=${encodeURIComponent(term)}`);
+    setSearchTerm("");
+  };
+
+  const handleSearch = (e) => {
+    if (e.key === "Enter") {
+      submitSearch();
+    }
+  };
+
   const firstLetter = userName ? userName.charAt(0).toUpperCase() : "U";
+
+  if (pathname?.startsWith("/checkout")) {
+    return null;
+  }
 
   return (
     <header className="w-full bg-[#1a4f9c] px-4 py-3 pt-5 text-white shadow-md md:py-4">
@@ -210,12 +236,20 @@ export function Header({
         <div className="flex items-center gap-2 min-h-12.5 lg:pl-40">
           <div className="relative min-w-0 flex-1 lg:pr-3">
             <Input
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              onKeyDown={handleSearch}
               className="h-10 w-full border-none bg-white pl-4 pr-10 text-zinc-800 shadow-inner focus-visible:ring-2 focus-visible:ring-yellow-400"
               placeholder="O que você precisa hoje? Tá na mão!..."
             />
-            <div className="absolute right-3 lg:right-6 top-2.5 border-l pl-2 text-zinc-400">
+            <button
+              type="button"
+              onClick={submitSearch}
+              className="absolute right-3 top-2.5 border-l pl-2 text-zinc-400 transition-colors hover:text-zinc-700 lg:right-6"
+              aria-label="Buscar produtos"
+            >
               <Search size={20} />
-            </div>
+            </button>
           </div>
 
           <button
@@ -248,7 +282,17 @@ export function Header({
                       <p className="text-xs font-light text-slate-500">User:</p>
                       <p className="truncate text-sm font-bold text-slate-800">{userName}</p>
                     </div>
-
+                    {userRole === "admin" && (
+                      <>
+                        <Link
+                          href="/admin"
+                          className="flex items-center gap-3 px-4 py-2.5 transition-colors hover:bg-blue-50 hover:text-blue-600"
+                        >
+                          <Shield size={16} className="text-slate-400" /> Painel Admin
+                        </Link>
+                      </>
+                    )}
+                    {!userRole?.includes("admin") && <hr className="my-1 border-slate-100" />}
                     {hasStore && (
                       <Link
                         href="/seller"
@@ -344,7 +388,7 @@ export function Header({
         </div>
 
         <div
-          className={`fixed inset-0 z-50 overflow-hidden transition-opacity duration-300 lg:hidden ${
+          className={`fixed inset-0 overflow-hidden transition-opacity duration-300 z-1000 lg:hidden ${
             mobileMenuOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
           }`}
           aria-hidden={!mobileMenuOpen}
@@ -370,8 +414,16 @@ export function Header({
                   </button>
                 </div>
 
-                <div className="flex-1 overflow-y-auto px-4 py-4">
+                <div className="flex-1 overflow-y-auto px-4 py-4 ">
                   <nav className="grid gap-2">
+                    {userRole === "admin" && (
+                      <>
+                        <Link href="/admin" className="block rounded-lg px-3 py-2 hover:bg-slate-50">
+                          Painel Admin
+                        </Link>
+                      </>
+                    )}
+                    {!userRole?.includes("admin") && <hr className="my-1 border-slate-100" />}
                     {isUserLoggedIn ? (
                       <>
                         <Link
@@ -442,7 +494,7 @@ export function Header({
                           categories.map((cat) => (
                             <Link
                               key={cat._id || cat.id || cat.slug}
-                              href={cat.slug ? `/categorias/${cat.slug}` : `/categorias?id=${cat._id || cat.id}`}
+                              href={`/products?categoryId=${cat._id || cat.id}`}
                               onClick={() => setMobileMenuOpen(false)}
                               className="block rounded px-2 py-2 hover:bg-slate-50"
                             >
@@ -461,7 +513,7 @@ export function Header({
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 text-xs font-light text-blue-50/90 md:text-sm">
+        <div className="flex flex-wrap items-center gap-2 text-xs font-light text-blue-50/90 md:text-sm max-[625px]:justify-center">
           <button
             onClick={handleLocationClick}
             disabled={isLoading}
@@ -472,7 +524,7 @@ export function Header({
           </button>
 
           <div
-            className="relative hidden sm:inline-block"
+            className="relative inline-block "
             onMouseEnter={() => {
               if (closeTimeoutRef.current) {
                 clearTimeout(closeTimeoutRef.current);
@@ -507,7 +559,7 @@ export function Header({
                   categories.map((cat) => (
                     <Link
                       key={cat._id || cat.id || cat.slug}
-                      href={cat.slug ? `/categorias/${cat.slug}` : `/categorias?id=${cat._id || cat.id}`}
+                      href={`/products?categoryId=${cat._id || cat.id}`}
                       className="block rounded px-3 py-2 text-sm hover:bg-slate-50"
                     >
                       {cat.name}
@@ -521,17 +573,17 @@ export function Header({
           </div>
 
           <Link
-            href="/ofertas"
-            className="hidden items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 font-medium text-white hover:bg-white/15 sm:inline-flex"
+            href="/products?promotion=true"
+            className="items-center gap-1 max-[412px]:hidden rounded-full bg-white/10 px-3 py-1.5 font-medium text-white hover:bg-white/15 inline-flex"
           >
             Ofertas do Dia
           </Link>
 
           <Link
-            href="/mais-vendidos"
+            href="/coupons"
             className="hidden items-center gap-1 rounded-full bg-white/10 px-3 py-1.5 font-medium text-white hover:bg-white/15 md:inline-flex"
           >
-            Mais Vendidos
+            Cupons
           </Link>
 
           <Link
