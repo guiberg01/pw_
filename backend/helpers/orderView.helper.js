@@ -4,6 +4,7 @@ const PAYMENT_STATUS_PRIORITY = {
   refunded: 400,
   requires_action: 300,
   pending: 200,
+  cancelled: 150,
   failed: 100,
 };
 

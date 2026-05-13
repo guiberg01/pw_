@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { toast } from "sonner";
-import { Calendar, Clock3, Package, RefreshCw, ShoppingBag } from "lucide-react";
+import { Calendar, Clock3, Eye, Package, RefreshCw, ShoppingBag } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { orderService } from "@/services/orderService";
@@ -57,6 +57,7 @@ export default function OrdersDashboard() {
   const [page, setPage] = useState(1);
   const [status, setStatus] = useState("");
   const [sort, setSort] = useState("newest");
+  const [cancellingOrderId, setCancellingOrderId] = useState(null);
 
   useEffect(() => {
     let mounted = true;
@@ -86,6 +87,22 @@ export default function OrdersDashboard() {
       mounted = false;
     };
   }, [page, sort, status]);
+
+  const handleCancelOrder = async (orderId) => {
+    setCancellingOrderId(orderId);
+    try {
+      await orderService.cancelOrder(orderId);
+      toast.success("Pedido cancelado com sucesso");
+      // Reload orders
+      const response = await orderService.getMyOrders({ page, status: status || undefined, sort });
+      setData(response);
+    } catch (err) {
+      const message = err?.response?.data?.message || "Não foi possível cancelar o pedido.";
+      toast.error(message);
+    } finally {
+      setCancellingOrderId(null);
+    }
+  };
 
   const orders = useMemo(() => data.items ?? [], [data.items]);
   const pagination = useMemo(
@@ -195,21 +212,33 @@ export default function OrdersDashboard() {
           ) : (
             <div className="space-y-4">
               {orders.map((order) => {
+                // Extract order ID safely - avoid "undefined" string
+                const rawId = order._id ?? order.id;
+                const normalizedOrderId = rawId != null ? String(rawId).trim() : "";
+                const invalidIdValues = new Set(["", "undefined", "null"]);
+                const orderId = invalidIdValues.has(normalizedOrderId.toLowerCase()) ? null : normalizedOrderId;
+
+                if (!orderId) {
+                  console.warn("Order found without valid _id:", order);
+                  return null;
+                }
+
                 const orderTone = getOrderTone(order.status);
                 const primaryPayment = order.paymentCurrent ?? order.payment ?? null;
                 const subtotal = Number(order.totalPriceProducts ?? 0);
                 const shipping = Number(order.totalShippingPrice ?? 0);
                 const discount = Number(order.totalDiscount ?? 0);
                 const total = Number(order.totalPaidByCustomer ?? subtotal + shipping - discount);
+                const canResumeCheckout = order.status === "pending" && Boolean(orderId);
 
                 return (
-                  <Card key={order._id} className="border-slate-200 bg-white shadow-sm">
+                  <Card key={orderId || order._id} className="border-slate-200 bg-white shadow-sm">
                     <CardContent className="space-y-4 p-4 md:p-6">
                       <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
                         <div className="space-y-2">
                           <div className="flex flex-wrap items-center gap-2 text-xs text-slate-500">
                             <span className="rounded-full bg-slate-100 px-3 py-1 font-semibold text-slate-700">
-                              Pedido #{String(order._id).slice(-6)}
+                              Pedido #{orderId ? orderId.slice(-6) : "-"}
                             </span>
                             <span className={`rounded-full px-3 py-1 font-semibold ${getToneClass(orderTone)}`}>
                               {getOrderLabel(order.status)}
@@ -230,11 +259,28 @@ export default function OrdersDashboard() {
                           </div>
                         </div>
 
-                        {order.status === "pending" ? (
-                          <Button asChild>
-                            <Link href={`/checkout/intent/${order._id}/resume`}>Retomar checkout</Link>
+                        <div className="flex gap-2 flex-wrap">
+                          <Button asChild variant="outline">
+                            <Link href={`/pedidos/${orderId}`}>
+                              <Eye className="h-4 w-4" />
+                              Detalhes
+                            </Link>
                           </Button>
-                        ) : null}
+                          {canResumeCheckout ? (
+                            <Button asChild>
+                              <Link href={`/checkout/intent/${orderId}/resume`}>Retomar checkout</Link>
+                            </Button>
+                          ) : null}
+                          {order.status === "pending" ? (
+                            <Button
+                              variant="outline"
+                              onClick={() => handleCancelOrder(orderId)}
+                              disabled={cancellingOrderId === orderId}
+                            >
+                              {cancellingOrderId === orderId ? "Cancelando..." : "Cancelar"}
+                            </Button>
+                          ) : null}
+                        </div>
                       </div>
 
                       <div className="grid gap-3 md:grid-cols-4">
