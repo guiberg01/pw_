@@ -1,6 +1,9 @@
 // definindo as funções de controle para as rotas de autenticação
+import mongoose from "mongoose";
 import Address from "../models/address.model.js";
 import Favorite from "../models/favorite.model.js";
+import Product from "../models/product.model.js";
+import ProductVariant from "../models/productVariant.model.js";
 import Notification from "../models/notification.model.js";
 import Order from "../models/order.model.js";
 import PaymentMethod from "../models/paymentMethod.model.js";
@@ -11,6 +14,7 @@ import { createHttpError } from "../helpers/httpError.js";
 import { sendSuccess } from "../helpers/successResponse.js";
 import { endUserSession, rotateAccessToken, startUserSession } from "../services/auth.service.js";
 import { orderStatuses } from "../constants/orderStatuses.js";
+import { accountStatuses } from "../constants/accountStatuses.js";
 
 export const signup = async (req, res, next) => {
   const { name, email, password, role, cpf, telephone } = req.body;
@@ -172,4 +176,51 @@ export const updateMyProfile = async (req, res, next) => {
       updatedAt: req.user.updatedAt,
     },
   });
+};
+
+export const deleteMyProfile = async (req, res, next) => {
+  const userId = req.user._id;
+  const now = new Date();
+  const session = await mongoose.startSession();
+
+  try {
+    await session.withTransaction(async () => {
+      const storeIds = await Store.find({ owner: userId }).distinct("_id").session(session);
+      const productIds =
+        storeIds.length > 0
+          ? await Product.find({ store: { $in: storeIds } })
+              .distinct("_id")
+              .session(session)
+          : [];
+
+      if (productIds.length > 0) {
+        await ProductVariant.deleteMany({ product: { $in: productIds } }, { session });
+        await Product.updateMany({ store: { $in: storeIds } }, { $set: { deletedAt: now } }, { session });
+      }
+
+      if (storeIds.length > 0) {
+        await Store.updateMany(
+          { _id: { $in: storeIds } },
+          { $set: { deletedAt: now, status: accountStatuses.BLOCKED } },
+          { session },
+        );
+      }
+
+      await User.findByIdAndUpdate(
+        userId,
+        {
+          deletedAt: now,
+          status: accountStatuses.BLOCKED,
+          suspendedSince: now,
+        },
+        { session },
+      );
+    });
+  } finally {
+    session.endSession();
+  }
+
+  await endUserSession(req, res);
+
+  return sendSuccess(res, 200, "Perfil excluído com sucesso");
 };

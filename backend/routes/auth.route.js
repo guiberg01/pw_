@@ -1,5 +1,13 @@
 import { Router } from "express";
-import { getMyProfile, logout, signup, login, refreshToken, updateMyProfile } from "../controllers/auth.controller.js";
+import {
+  deleteMyProfile,
+  getMyProfile,
+  logout,
+  signup,
+  login,
+  refreshToken,
+  updateMyProfile,
+} from "../controllers/auth.controller.js";
 import { validateBody } from "../middleware/validation.middleware.js";
 import { createRateLimit } from "../middleware/rateLimit.middleware.js";
 import { isLoggedIn } from "../middleware/auth.middleware.js";
@@ -35,5 +43,6 @@ router.post("/logout", logout);
 router.post("/refresh", refreshRateLimit, refreshToken);
 router.get("/me", isLoggedIn, getMyProfile);
 router.patch("/me", isLoggedIn, validateBody(updateProfileSchema), updateMyProfile);
+router.delete("/me", isLoggedIn, deleteMyProfile);
 
 export default router;
