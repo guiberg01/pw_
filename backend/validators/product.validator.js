@@ -173,4 +173,6 @@ export const productListQuerySchema = paginationQuerySchema.extend({
   search: z.string().trim().min(1, "A busca deve ter ao menos 1 caractere").optional(),
   location: z.string().trim().min(1, "A localização deve ter ao menos 1 caractere").optional(),
   status: z.enum(["active", "blocked"]).optional(),
+  highlighted: z.union([z.boolean(), z.enum(["true", "false"]).transform((v) => v === "true")]).optional(),
+  store: mongoIdSchema.optional(),
 });

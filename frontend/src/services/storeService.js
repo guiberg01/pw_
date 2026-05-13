@@ -2,6 +2,22 @@ import { api } from "@/api/api";
 import { uploadService } from "./uploadService";
 
 export const storeService = {
+  async getAllStores(params = {}) {
+    try {
+      const response = await api.get("/stores", { params });
+      const data = response.data?.data ?? response.data ?? {};
+
+      if (Array.isArray(data)) return data;
+      if (Array.isArray(data.items)) return data.items;
+      if (Array.isArray(data.stores)) return data.stores;
+
+      return [];
+    } catch (error) {
+      console.error("Erro ao buscar lojas do backend:", error);
+      return [];
+    }
+  },
+
   async getMyStore() {
     const response = await api.get("/stores/me");
     return response.data?.data ?? null;

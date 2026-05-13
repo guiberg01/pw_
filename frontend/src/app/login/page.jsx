@@ -94,7 +94,7 @@ export default function LoginPage() {
                       </FieldLabel>
                       <Link
                         href="/esqueci-a-senha"
-                        className="text-xs text-blue-600 hover:text-[#1a4f9c] hover:underline font-medium"
+                        className="hidden text-xs text-blue-600 hover:text-[#1a4f9c] hover:underline font-medium"
                       >
                         Esqueceu a senha?
                       </Link>
