@@ -18,6 +18,11 @@ export const paymentMethodService = {
     return extractData(response);
   },
 
+  async createMyPaymentMethodSetupIntent() {
+    const response = await api.post("/payment-methods/setup-intent");
+    return extractData(response);
+  },
+
   async updateMyPaymentMethod(paymentMethodId, payload) {
     const response = await api.put(`/payment-methods/${paymentMethodId}`, payload);
     return extractData(response);
