@@ -120,7 +120,7 @@ export function AddToCartButton({ productVariantId, stock, maxPerPerson = null, 
           disabled={loading || isOutOfStock}
           className={`w-full py-2.5 rounded-md font-semibold flex items-center justify-center gap-2 transition duration-200 ${
             isOutOfStock
-              ? "bg-slate-200 text-slate-400 cursor-not-allowed"
+              ? "bg-slate-200 text-slate-400 cursor-not-allowed mb-0"
               : success
                 ? "bg-emerald-500 text-white"
                 : "bg-[#1a4f9c] text-white hover:bg-blue-700 active:scale-95"
@@ -181,8 +181,8 @@ export function AddToCartButton({ productVariantId, stock, maxPerPerson = null, 
       )}
 
       {!compact && isOutOfStock && (
-        <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-3">
-          <p className="text-sm text-yellow-800 font-medium">Produto indisponível no momento</p>
+        <div className="rounded-lg bg-yellow-50 border border-yellow-200 p-3 absolute bottom-0 w-full text-center">
+          <p className="text-sm text-yellow-800 font-medium">Produto indisponível no momento...</p>
         </div>
       )}
     </div>

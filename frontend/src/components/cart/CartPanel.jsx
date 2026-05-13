@@ -142,7 +142,7 @@ export function CartPanel({ isOpen, onClose }) {
 
   return (
     <div
-      className={`fixed inset-0 z-50 overflow-hidden transition-opacity duration-300 ${
+      className={`fixed inset-0 z-1000 overflow-hidden transition-opacity duration-300 ${
         isOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
       }`}
       aria-hidden={!isOpen}
@@ -450,6 +450,7 @@ function CartItemRow({ item, onUpdateQuantity, onRemove }) {
   const stock = productVariant.stock || 0;
   const maxPerPerson = product?.maxPerPerson || Infinity;
   const maxAllowed = Math.min(stock, maxPerPerson);
+  const productDetailId = product?._id || product?.id || null;
 
   const handleQuantityChange = (e) => {
     const newQty = parseInt(e.target.value, 10);
@@ -485,7 +486,7 @@ function CartItemRow({ item, onUpdateQuantity, onRemove }) {
       <div className="flex-1 flex flex-col justify-between">
         <div>
           <Link
-            href={`/products/${productVariant._id}`}
+            href={productDetailId ? `/products/${productDetailId}` : "/products"}
             className="line-clamp-2 text-sm font-medium text-slate-900 transition hover:text-blue-600"
           >
             {product.name}
