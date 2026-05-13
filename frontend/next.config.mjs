@@ -21,6 +21,7 @@ const remotePatterns = [
     hostname: "localhost",
     port: "3980",
   },
+  { protocol: "https", hostname: "res.cloudinary.com" },
 ];
 
 if (apiUrl) {

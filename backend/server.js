@@ -33,7 +33,7 @@ import favoriteRoutes from "./routes/favorite.route.js";
 
 import { connectDB, disconnectDB } from "./config/db.js";
 import { disconnectRedis } from "./config/redis.js";
-import { ensureUploadDirectoryExists, getUploadDirectoryPath } from "./config/upload.js";
+//import { ensureUploadDirectoryExists, getUploadDirectoryPath } from "./config/upload.js";
 
 dotenv.config();
 
@@ -136,7 +136,7 @@ app.use(
 );
 app.use(cookieParser());
 app.use(globalRateLimit);
-app.use("/uploads", express.static(getUploadDirectoryPath()));
+//app.use("/uploads", express.static(getUploadDirectoryPath()));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
@@ -169,7 +169,7 @@ app.use(errorHandler);
 const bootstrap = async () => {
   try {
     validateRequiredEnv();
-    await ensureUploadDirectoryExists();
+    //await ensureUploadDirectoryExists();
     await connectDB();
 
     httpServer = app.listen(PORT, () => {
