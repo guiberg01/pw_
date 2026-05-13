@@ -1,12 +1,19 @@
 import mongoose from "mongoose";
 import Review from "../models/review.model.js";
+import Order from "../models/order.model.js";
+import OrderReview from "../models/orderReview.model.js";
 import Product from "../models/product.model.js";
+import Store from "../models/store.model.js";
 import ProductVariant from "../models/productVariant.model.js";
 import SubOrder from "../models/subOrder.model.js";
-import Order from "../models/order.model.js";
 import { createHttpError } from "../helpers/httpError.js";
 import { findActiveStoreByOwnerOrThrow } from "./catalog.service.js";
-import { notifyReviewCreatedForSeller, notifyReviewReplyForCustomer } from "./notification.service.js";
+import {
+  createNotificationForUser,
+  notifyReviewCreatedForSeller,
+  notifyReviewReplyForCustomer,
+} from "./notification.service.js";
+import { subOrderStatuses } from "../constants/subOrderStatuses.js";
 
 const DEFAULT_PAGE = 1;
 const DEFAULT_LIMIT = 20;
@@ -45,30 +52,73 @@ const getSort = (sort) => {
 };
 
 const syncProductRating = async (productId, session) => {
-  const [ratingData] = await Review.aggregate([
-    { $match: { product: new mongoose.Types.ObjectId(productId) } },
-    {
-      $group: {
-        _id: "$product",
-        count: { $sum: 1 },
-        sum: { $sum: "$rating" },
+  try {
+    const pipeline = [
+      { $match: { product: new mongoose.Types.ObjectId(productId) } },
+      {
+        $group: {
+          _id: "$product",
+          count: { $sum: 1 },
+          sum: { $sum: "$rating" },
+        },
       },
-    },
-  ]).session(session);
+    ];
 
-  const ratingCount = Number(ratingData?.count ?? 0);
-  const ratingSum = Number(ratingData?.sum ?? 0);
+    let aggregateQuery = Review.aggregate(pipeline);
+    if (session) {
+      aggregateQuery = aggregateQuery.session(session);
+    }
 
-  await Product.updateOne(
-    { _id: productId },
-    {
-      $set: {
-        "rating.ratingCount": ratingCount,
-        "rating.ratingSum": ratingSum,
+    const [ratingData] = await aggregateQuery.exec();
+
+    const ratingCount = Number(ratingData?.count ?? 0);
+    const ratingSum = Number(ratingData?.sum ?? 0);
+
+    const updateOpts = session ? { session } : {};
+    await Product.updateOne(
+      { _id: productId },
+      {
+        $set: {
+          "rating.ratingCount": ratingCount,
+          "rating.ratingSum": ratingSum,
+        },
       },
-    },
-    { session },
-  );
+      updateOpts,
+    );
+  } catch (err) {
+    console.error(`Erro ao sincronizar rating do produto ${productId}:`, err);
+    throw err;
+  }
+};
+
+const syncStoreReputation = async (storeId, session) => {
+  try {
+    const pipeline = [
+      { $match: { store: new mongoose.Types.ObjectId(storeId) } },
+      {
+        $group: {
+          _id: "$store",
+          average: { $avg: "$storeRating" },
+          count: { $sum: 1 },
+        },
+      },
+    ];
+
+    let aggregateQuery = OrderReview.aggregate(pipeline);
+    if (session) {
+      aggregateQuery = aggregateQuery.session(session);
+    }
+
+    const [agg] = await aggregateQuery.exec();
+
+    const reputation = Math.round(Number(agg?.average ?? 0) * 10) / 10;
+
+    const updateOpts = session ? { session } : {};
+    await Store.updateOne({ _id: storeId }, { $set: { reputation } }, updateOpts);
+  } catch (err) {
+    console.error(`Erro ao sincronizar reputação da loja ${storeId}:`, err);
+    throw err;
+  }
 };
 
 const serializeReview = (review) => ({
@@ -81,6 +131,20 @@ const serializeReview = (review) => ({
   images: review.images ?? [],
   videos: review.videos ?? [],
   sellerReply: review.sellerReply ?? { comment: null, repliedAt: null, editedAt: null },
+  createdAt: review.createdAt,
+  updatedAt: review.updatedAt,
+});
+
+const serializeOrderReview = (review) => ({
+  _id: review._id,
+  order: review.order,
+  subOrder: review.subOrder,
+  store: review.store,
+  user: review.user,
+  orderRating: review.orderRating,
+  storeRating: review.storeRating,
+  comment: review.comment,
+  images: review.images ?? [],
   createdAt: review.createdAt,
   updatedAt: review.updatedAt,
 });
@@ -216,16 +280,27 @@ export const createReviewForUser = async (actor, payload) => {
   try {
     let createdReview;
     await session.withTransaction(async () => {
+      // Resolve productId from payload.productId or payload.productVariantId
+      let productIdToUse = payload.productId ?? null;
+      if (!productIdToUse && payload.productVariantId) {
+        const pv = await ProductVariant.findById(payload.productVariantId).select("product").session(session).lean();
+        productIdToUse = pv?.product ?? null;
+      }
+
+      if (!productIdToUse) {
+        throw createHttpError("productId or productVariantId is required", 400, undefined, "REVIEW_MISSING_PRODUCT");
+      }
+
       await ensureReviewEligibilityOrThrow({
         userId: actor._id,
-        productId: payload.productId,
+        productId: productIdToUse,
         subOrderId: payload.subOrderId,
         session,
       });
 
       const existing = await Review.findOne({
         user: actor._id,
-        product: payload.productId,
+        product: productIdToUse,
         subOrder: payload.subOrderId,
       })
         .session(session)
@@ -238,7 +313,7 @@ export const createReviewForUser = async (actor, payload) => {
       const [review] = await Review.create(
         [
           {
-            product: payload.productId,
+            product: productIdToUse,
             user: actor._id,
             subOrder: payload.subOrderId,
             rating: payload.rating,
@@ -461,6 +536,92 @@ export const listStoreProductReviews = async (actor, query = {}) => {
   };
 };
 
+export const listStoreOrderReviews = async (actor, query = {}) => {
+  const store = await findActiveStoreByOwnerOrThrow(actor._id);
+
+  const { page, limit, skip } = normalizePagination(query);
+  const sort = getSort(query.sort);
+  const search = query.search?.trim();
+
+  const pipeline = [{ $match: { store: store._id } }];
+
+  pipeline.push(
+    {
+      $lookup: {
+        from: "users",
+        localField: "user",
+        foreignField: "_id",
+        as: "user",
+      },
+    },
+    { $unwind: "$user" },
+  );
+
+  if (search) {
+    const regex = { $regex: search, $options: "i" };
+    pipeline.push({
+      $match: {
+        $or: [{ comment: regex }, { "user.name": regex }, { "user.email": regex }],
+      },
+    });
+  }
+
+  const [result] = await OrderReview.aggregate([
+    ...pipeline,
+    {
+      $facet: {
+        items: [
+          { $sort: sort },
+          { $skip: skip },
+          { $limit: limit },
+          {
+            $project: {
+              _id: 1,
+              order: 1,
+              subOrder: 1,
+              store: 1,
+              user: {
+                _id: "$user._id",
+                name: "$user.name",
+                email: "$user.email",
+              },
+              orderRating: 1,
+              storeRating: 1,
+              comment: 1,
+              images: 1,
+              createdAt: 1,
+              updatedAt: 1,
+            },
+          },
+        ],
+        total: [{ $count: "value" }],
+        averageStore: [{ $group: { _id: null, average: { $avg: "$storeRating" } } }],
+        averageOrder: [{ $group: { _id: null, average: { $avg: "$orderRating" } } }],
+        breakdown: [{ $group: { _id: "$storeRating", count: { $sum: 1 } } }],
+      },
+    },
+  ]);
+
+  const total = result?.total?.[0]?.value ?? 0;
+  const averageStore = result?.averageStore?.[0]?.average ?? 0;
+  const averageOrder = result?.averageOrder?.[0]?.average ?? 0;
+  const breakdown = { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 };
+
+  for (const row of result?.breakdown ?? []) {
+    breakdown[row._id] = row.count;
+  }
+
+  return {
+    ...buildPaginationResult({ items: result?.items ?? [], total, page, limit }),
+    summary: {
+      averageStore: Math.round(Number(averageStore || 0) * 100) / 100,
+      averageOrder: Math.round(Number(averageOrder || 0) * 100) / 100,
+      total,
+      breakdown,
+    },
+  };
+};
+
 export const upsertReviewReply = async (actor, reviewId, comment) => {
   const review = await Review.findById(reviewId);
 
@@ -521,4 +682,147 @@ export const getAdminReviews = async (query = {}) => {
   ]);
 
   return buildPaginationResult({ items: items.map(serializeReview), total, page, limit });
+};
+
+export const listMyOrderReviewsForUser = async (userId, orderId) => {
+  const order = await Order.findOne({ _id: orderId, user: userId }).select("_id").lean();
+
+  if (!order) {
+    throw createHttpError("Pedido não encontrado", 404, undefined, "ORDER_NOT_FOUND");
+  }
+
+  const reviews = await OrderReview.find({ order: order._id, user: userId }).sort({ createdAt: 1 }).lean();
+
+  return reviews.map(serializeOrderReview);
+};
+
+export const createOrderReviewForUser = async (actor, payload) => {
+  const order = await Order.findOne({ _id: payload.orderId, user: actor._id }).select("_id user").lean();
+
+  if (!order) {
+    throw createHttpError("Pedido não encontrado", 404, undefined, "ORDER_NOT_FOUND");
+  }
+
+  const subOrder = await SubOrder.findOne({ _id: payload.subOrderId, order: order._id })
+    .populate({ path: "store", select: "_id owner name" })
+    .select("_id order store status")
+    .lean();
+
+  if (!subOrder) {
+    throw createHttpError("Subpedido não encontrado", 404, undefined, "ORDER_REVIEW_SUBORDER_NOT_FOUND");
+  }
+
+  if (subOrder.status !== subOrderStatuses.DELIVERED) {
+    throw createHttpError(
+      "A review só pode ser enviada após a entrega do subpedido",
+      409,
+      undefined,
+      "ORDER_REVIEW_SUBORDER_NOT_DELIVERED",
+    );
+  }
+
+  const existing = await OrderReview.findOne({
+    order: order._id,
+    user: actor._id,
+    subOrder: subOrder._id,
+  }).lean();
+
+  if (existing) {
+    throw createHttpError("Review já cadastrada para este subpedido", 409, undefined, "ORDER_REVIEW_ALREADY_EXISTS");
+  }
+
+  const [createdReview] = await OrderReview.create([
+    {
+      order: order._id,
+      subOrder: subOrder._id,
+      store: subOrder.store?._id ?? subOrder.store,
+      user: actor._id,
+      orderRating: payload.orderRating,
+      storeRating: payload.storeRating,
+      comment: payload.comment ?? "",
+      images: payload.images ?? [],
+    },
+  ]);
+  // Atualiza reputação da loja com base nas avaliações de pedido
+  try {
+    const storeId = subOrder.store?._id ?? subOrder.store;
+    if (storeId) {
+      await syncStoreReputation(storeId);
+    }
+  } catch (err) {
+    // não bloqueia criação de review em caso de falha na atualização da reputação
+    console.error("Erro ao sincronizar reputação da loja:", err);
+  }
+
+  // Se houver avaliação para produto no payload (productId ou productVariantId), crie também a Review do produto
+  const productVariantId = payload.productVariantId ?? null;
+  let productIdToUse = payload.productId ?? null;
+
+  if (!productIdToUse && productVariantId) {
+    try {
+      const pv = await ProductVariant.findById(productVariantId).select("product").lean();
+      productIdToUse = pv?.product ?? null;
+    } catch (err) {
+      console.error("Erro ao buscar productVariant para derivar productId:", err);
+      productIdToUse = null;
+    }
+  }
+
+  if (productIdToUse && payload.productRating !== undefined) {
+    try {
+      await ensureReviewEligibilityOrThrow({
+        userId: actor._id,
+        productId: productIdToUse,
+        subOrderId: subOrder._id,
+      });
+
+      const existingProductReview = await Review.findOne({
+        user: actor._id,
+        product: productIdToUse,
+        subOrder: subOrder._id,
+      }).lean();
+
+      if (!existingProductReview) {
+        const [createdProductReview] = await Review.create([
+          {
+            product: productIdToUse,
+            user: actor._id,
+            subOrder: subOrder._id,
+            rating: payload.productRating,
+            comment: payload.comment ?? "",
+            images: payload.images ?? [],
+          },
+        ]);
+
+        try {
+          await syncProductRating(productIdToUse);
+        } catch (err) {
+          console.error("Erro ao sincronizar rating do produto:", err);
+        }
+      }
+    } catch (err) {
+      // não bloqueia criação da order review se falhar criação do review de produto
+      console.error("Erro ao criar review de produto associada:", err);
+    }
+  }
+
+  const storeOwnerId = subOrder.store?.owner?._id ?? subOrder.store?.owner ?? null;
+  if (storeOwnerId) {
+    await createNotificationForUser(storeOwnerId, {
+      title: "Nova avaliação recebida",
+      message: `O pedido #${String(order._id).slice(-6)} recebeu uma avaliação da loja e do pedido.`,
+      type: "review_received",
+      recipientRole: "seller",
+      actionUrl: "/seller/reviews",
+      refModel: { refId: createdReview._id, refModel: "SubOrder" },
+      metadata: {
+        orderId: order._id.toString(),
+        subOrderId: subOrder._id.toString(),
+        orderRating: createdReview.orderRating,
+        storeRating: createdReview.storeRating,
+      },
+    });
+  }
+
+  return serializeOrderReview(createdReview.toObject());
 };

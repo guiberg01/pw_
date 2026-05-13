@@ -7,15 +7,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { reviewService } from "@/services/reviewService";
 import ReviewCard from "./ReviewCard";
-import ReviewReplyDialog from "./ReviewReplyDialog";
-import ConfirmActionDialog from "@/components/ui/confirm-action-dialog";
 import Link from "next/link";
 
 const defaultSummary = {
-  average: 0,
+  averageStore: 0,
+  averageOrder: 0,
   total: 0,
-  replied: 0,
-  pending: 0,
   breakdown: { 1: 0, 2: 0, 3: 0, 4: 0, 5: 0 },
 };
 
@@ -48,7 +45,7 @@ export default function ReviewDashboard() {
   const fetchReviews = async () => {
     setIsLoading(true);
     try {
-      const response = await reviewService.getMyStoreReviews({
+      const response = await reviewService.getMyStoreOrderReviews({
         page,
         limit: 12,
         sort,
@@ -78,41 +75,12 @@ export default function ReviewDashboard() {
 
   const summaryCards = useMemo(
     () => [
-      { label: "Nota média", value: summary.average?.toFixed(2) || "0.00" },
+      { label: "Reputação da loja", value: summary.averageStore?.toFixed(2) || "0.00" },
+      { label: "Avaliação dos pedidos", value: summary.averageOrder?.toFixed(2) || "0.00" },
       { label: "Avaliações", value: String(summary.total || 0) },
-      { label: "Respondidas", value: String(summary.replied || 0) },
-      { label: "Pendentes", value: String(summary.pending || 0) },
     ],
     [summary],
   );
-
-  const handleSaveReply = async (comment) => {
-    if (!replyReview) return;
-
-    setIsSavingReply(true);
-    try {
-      await reviewService.replyToReview(replyReview._id, comment);
-      toast.success(replyReview?.sellerReply?.comment ? "Resposta atualizada" : "Resposta enviada");
-      setReplyReview(null);
-      await fetchReviews();
-    } finally {
-      setIsSavingReply(false);
-    }
-  };
-
-  const handleDeleteReply = async () => {
-    if (!deleteReplyReview) return;
-
-    setIsDeletingReply(true);
-    try {
-      await reviewService.deleteReviewReply(deleteReplyReview._id);
-      toast.success("Resposta removida");
-      setDeleteReplyReview(null);
-      await fetchReviews();
-    } finally {
-      setIsDeletingReply(false);
-    }
-  };
 
   return (
     <div className="space-y-6">
@@ -126,10 +94,9 @@ export default function ReviewDashboard() {
               <p className="text-[11px] font-bold uppercase tracking-[0.34em] text-blue-600">Avaliações da loja</p>
             </div>
 
-            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 md:text-5xl">Responder avaliações</h1>
+            <h1 className="mt-2 text-3xl font-black tracking-tight text-slate-950 md:text-5xl">Avaliações recebidas</h1>
             <p className="mt-2 max-w-3xl text-sm text-slate-600 md:text-base">
-              Veja as avaliações reais dos seus produtos, acompanhe a nota média e responda os clientes diretamente por
-              aqui.
+              Veja as avaliações feitas pelos clientes no pedido, acompanhe a reputação da loja e monitore a satisfação.
             </p>
           </div>
 
@@ -165,7 +132,7 @@ export default function ReviewDashboard() {
                 setSearch(e.target.value);
               }}
               className="h-11 rounded-full border-slate-300 pl-10"
-              placeholder="Buscar por produto, cliente, comentário ou resposta"
+              placeholder="Buscar por pedido, cliente ou comentário"
             />
           </label>
 
@@ -203,14 +170,7 @@ export default function ReviewDashboard() {
             Nenhuma avaliação encontrada com os filtros atuais.
           </div>
         ) : (
-          items.map((review) => (
-            <ReviewCard
-              key={review._id}
-              review={review}
-              onReply={(item) => setReplyReview(item)}
-              onDeleteReply={(item) => setDeleteReplyReview(item)}
-            />
-          ))
+          items.map((review) => <ReviewCard key={review._id} review={review} />)
         )}
       </section>
 
@@ -231,28 +191,6 @@ export default function ReviewDashboard() {
           </Button>
         </div>
       </div>
-
-      <ReviewReplyDialog
-        open={Boolean(replyReview)}
-        onOpenChange={(open) => {
-          if (!open) setReplyReview(null);
-        }}
-        review={replyReview}
-        onSubmit={handleSaveReply}
-        isProcessing={isSavingReply}
-      />
-
-      <ConfirmActionDialog
-        open={Boolean(deleteReplyReview)}
-        onOpenChange={(open) => {
-          if (!open) setDeleteReplyReview(null);
-        }}
-        title="Remover resposta da loja"
-        description={`Tem certeza que deseja remover a resposta para ${deleteReplyReview?.product?.name || "esta avaliação"}?`}
-        confirmLabel="Remover"
-        onConfirm={handleDeleteReply}
-        isProcessing={isDeletingReply}
-      />
     </div>
   );
 }

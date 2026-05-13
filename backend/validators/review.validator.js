@@ -26,14 +26,19 @@ export const productReviewListQuerySchema = paginationQuerySchema.extend({
   search: z.string().trim().min(1).optional(),
 });
 
-export const createReviewSchema = z.object({
-  productId: mongoIdSchema,
-  subOrderId: mongoIdSchema,
-  rating: z.coerce.number().int().min(1).max(5),
-  comment: z.string().trim().max(2000).optional().default(""),
-  images: reviewMediaSchema,
-  videos: reviewMediaSchema,
-});
+export const createReviewSchema = z
+  .object({
+    productId: mongoIdSchema.optional(),
+    productVariantId: mongoIdSchema.optional(),
+    subOrderId: mongoIdSchema,
+    rating: z.coerce.number().int().min(1).max(5),
+    comment: z.string().trim().max(2000).optional().default(""),
+    images: reviewMediaSchema,
+    videos: reviewMediaSchema,
+  })
+  .refine((payload) => payload.productId || payload.productVariantId, {
+    message: "Informe productId ou productVariantId",
+  });
 
 export const updateReviewSchema = z
   .object({
@@ -69,4 +74,20 @@ export const updateReviewSchema = z
 
 export const upsertSellerReplySchema = z.object({
   comment: z.string().trim().min(1).max(2000),
+});
+
+export const orderReviewListParamSchema = z.object({
+  orderId: mongoIdSchema,
+});
+
+export const createOrderReviewSchema = z.object({
+  orderId: mongoIdSchema,
+  subOrderId: mongoIdSchema,
+  orderRating: z.coerce.number().int().min(1).max(5),
+  storeRating: z.coerce.number().int().min(1).max(5),
+  productId: mongoIdSchema.optional(),
+  productVariantId: mongoIdSchema.optional(),
+  productRating: z.coerce.number().int().min(1).max(5).optional(),
+  comment: z.string().trim().max(2000).optional().default(""),
+  images: reviewMediaSchema,
 });
