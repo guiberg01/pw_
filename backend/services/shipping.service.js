@@ -5,6 +5,7 @@ import ShippingQuote from "../models/shippingQuote.model.js";
 import melhorenvioService from "./melhorenvio.service.js";
 import MELHOR_ENVIO_CONFIG from "../config/melhorenvio.config.js";
 import { createHttpError } from "../helpers/httpError.js";
+import { notifyReviewRequestForCustomer } from "./notification.service.js";
 import { orderStatuses } from "../constants/orderStatuses.js";
 import { shippingStatuses } from "../constants/shippingStatuses.js";
 import { subOrderStatuses } from "../constants/subOrderStatuses.js";
@@ -740,6 +741,17 @@ class ShippingService {
 
       await subOrder.save();
       await this.syncOrderStatus(subOrder.order);
+
+      if (newStatus === shippingStatuses.DELIVERED) {
+        const order = await Order.findById(subOrder.order).select("_id user").lean();
+        if (order?.user) {
+          await notifyReviewRequestForCustomer({
+            userId: order.user,
+            orderId: order._id,
+            subOrderId: subOrder._id,
+          });
+        }
+      }
     }
 
     return shipping;

@@ -21,7 +21,7 @@ export const checkoutShippingOptionsSchema = z.object({
 
 export const createCheckoutIntentSchema = z.object({
   addressId: mongoIdSchema,
-  paymentMethodId: mongoIdSchema,
+  paymentMethodId: mongoIdSchema.optional(),
   couponCode: checkoutCouponCodeSchema,
   shippingSelections: z.array(checkoutShippingSelectionSchema).min(1, "Seleção de frete é obrigatória"),
 });

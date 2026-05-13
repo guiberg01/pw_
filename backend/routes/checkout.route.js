@@ -1,6 +1,7 @@
 import { Router } from "express";
 import {
   createCheckoutIntent,
+  getCheckoutOrderDetails,
   getCheckoutShippingOptions,
   handleStripeWebhook,
   reconcileCheckoutOrderPayment,
@@ -19,6 +20,7 @@ const router = Router();
 router.post("/webhook/stripe", handleStripeWebhook);
 router.post("/shipping-options", isLoggedIn, validateBody(checkoutShippingOptionsSchema), getCheckoutShippingOptions);
 router.post("/intent", isLoggedIn, validateBody(createCheckoutIntentSchema), createCheckoutIntent);
+router.get("/intent/:orderId/details", isLoggedIn, validateParams(checkoutOrderIdParamSchema), getCheckoutOrderDetails);
 router.get("/intent/:orderId/resume", isLoggedIn, validateParams(checkoutOrderIdParamSchema), resumeCheckoutIntent);
 router.post(
   "/orders/:orderId/reconcile",

@@ -23,6 +23,7 @@ import { subOrderStatuses } from "../constants/subOrderStatuses.js";
 import melhorenvioService from "./melhorenvio.service.js";
 import shippingService from "./shipping.service.js";
 import { notifyOrderFailedOrCancelled, notifyOrderPaid, notifyRefundEvent } from "./notification.service.js";
+import { ensureStripeCustomerForUser } from "./paymentMethod.service.js";
 
 const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100) / 100;
 const CHECKOUT_EVENT_SOURCE = "stripe_webhook";
@@ -30,7 +31,7 @@ const DEFAULT_COMMISSION_RATE = 10;
 
 const stripeClient = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
-const getStripeClientOrThrow = () => {
+export const getStripeClientOrThrow = () => {
   if (!stripeClient) {
     throw createHttpError("Stripe não configurado", 500, undefined, "STRIPE_NOT_CONFIGURED");
   }
@@ -384,31 +385,70 @@ const buildStoreConnectContext = async (groupedByStore, session) => {
   return map;
 };
 
-const normalizeCartForCheckoutOrThrow = async (userId, session) => {
-  const cart = await Cart.findOne({ user: userId })
-    .session(session)
-    .populate({
-      path: "items.productVariant",
-      select: "price stock sku imageUrl product weight length width height",
-      populate: {
-        path: "product",
-        select: "name maxPerPerson status category store",
-        populate: {
-          path: "store",
-          select: "status",
-        },
-      },
-    });
+const normalizeCartForCheckoutOrThrow = async (userId, session, requestedItems = null) => {
+  const hasRequestedItems = Array.isArray(requestedItems) && requestedItems.length > 0;
 
-  if (!cart || (cart.items ?? []).length === 0) {
+  const sourceItems = hasRequestedItems
+    ? requestedItems
+        .map((item) => ({
+          productVariantId: String(item?.productVariantId ?? "").trim(),
+          quantity: Number(item?.quantity ?? 0),
+        }))
+        .filter((item) => item.productVariantId && Number.isFinite(item.quantity) && item.quantity > 0)
+    : null;
+
+  if (hasRequestedItems && (!sourceItems || sourceItems.length === 0)) {
+    throw createHttpError("Carrinho vazio", 400, undefined, "CHECKOUT_CART_EMPTY");
+  }
+
+  const cart = hasRequestedItems
+    ? null
+    : await Cart.findOne({ user: userId })
+        .session(session)
+        .populate({
+          path: "items.productVariant",
+          select: "price stock sku imageUrl product weight length width height",
+          populate: {
+            path: "product",
+            select: "name maxPerPerson status category store",
+            populate: {
+              path: "store",
+              select: "status",
+            },
+          },
+        });
+
+  if (!hasRequestedItems && (!cart || (cart.items ?? []).length === 0)) {
     throw createHttpError("Carrinho vazio", 400, undefined, "CHECKOUT_CART_EMPTY");
   }
 
   const normalizedItems = [];
   const groupedByStore = new Map();
 
-  for (const cartItem of cart.items) {
-    const productVariant = cartItem.productVariant;
+  const itemsToNormalize = hasRequestedItems ? sourceItems : cart.items;
+
+  const variantsById = hasRequestedItems
+    ? new Map(
+        (
+          await ProductVariant.find({ _id: { $in: sourceItems.map((item) => item.productVariantId) } })
+            .session(session)
+            .select("price stock sku imageUrl product weight length width height")
+            .populate({
+              path: "product",
+              select: "name maxPerPerson status category store",
+              populate: {
+                path: "store",
+                select: "status",
+              },
+            })
+        ).map((variant) => [variant._id.toString(), variant]),
+      )
+    : null;
+
+  for (const itemSource of itemsToNormalize) {
+    const productVariant = hasRequestedItems
+      ? variantsById.get(String(itemSource.productVariantId))
+      : itemSource.productVariant;
     const product = productVariant?.product;
 
     if (!productVariant || !product) {
@@ -419,7 +459,7 @@ const normalizeCartForCheckoutOrThrow = async (userId, session) => {
       throw createHttpError("Carrinho possui item indisponível", 400, undefined, "CHECKOUT_ITEM_UNAVAILABLE");
     }
 
-    const quantity = Number(cartItem.quantity ?? 0);
+    const quantity = hasRequestedItems ? Number(itemSource.quantity ?? 0) : Number(itemSource.quantity ?? 0);
     if (quantity <= 0) {
       throw createHttpError(
         "Carrinho possui item com quantidade inválida",
@@ -678,11 +718,11 @@ const calculateShippingByStoreForCheckoutOrThrow = async ({
 };
 
 export const getCheckoutShippingOptionsForUser = async (userId, payload) => {
-  const { addressId, couponCode } = payload;
+  const { addressId, couponCode, items: requestedItems = null } = payload;
 
   const [address, cartContext] = await Promise.all([
     Address.findOne({ _id: addressId, user: userId }).lean(),
-    normalizeCartForCheckoutOrThrow(userId),
+    normalizeCartForCheckoutOrThrow(userId, null, requestedItems),
   ]);
 
   if (!address) {
@@ -780,11 +820,11 @@ export const getCheckoutShippingOptionsForUser = async (userId, payload) => {
 };
 
 export const createCheckoutIntentForUser = async (userId, payload) => {
-  const { addressId, paymentMethodId, couponCode, shippingSelections } = payload;
+  const { addressId, paymentMethodId = null, couponCode, shippingSelections, items: requestedItems = null } = payload;
 
   const [shippingAddress, shippingCartContext] = await Promise.all([
     Address.findOne({ _id: addressId, user: userId }).lean(),
-    normalizeCartForCheckoutOrThrow(userId),
+    normalizeCartForCheckoutOrThrow(userId, null, requestedItems),
   ]);
 
   if (!shippingAddress) {
@@ -823,21 +863,22 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
   let totalShippingPrice;
   let totalPaidByCustomer;
   let connectContextByStore;
+  let selectedStripePaymentMethodId;
 
   try {
     session.startTransaction();
     try {
-      const [address, paymentMethod, cartContext] = await Promise.all([
-        Address.findOne({ _id: addressId, user: userId }).session(session),
-        PaymentMethod.findOne({ _id: paymentMethodId, user: userId }).session(session),
-        normalizeCartForCheckoutOrThrow(userId, session),
-      ]);
+      const address = await Address.findOne({ _id: addressId, user: userId }).session(session);
+      const paymentMethod = paymentMethodId
+        ? await PaymentMethod.findOne({ _id: paymentMethodId, user: userId }).session(session)
+        : null;
+      const cartContext = await normalizeCartForCheckoutOrThrow(userId, session, requestedItems);
 
       if (!address) {
         throw createHttpError("Endereço não encontrado", 404, undefined, "CHECKOUT_ADDRESS_NOT_FOUND");
       }
 
-      if (!paymentMethod) {
+      if (paymentMethodId && !paymentMethod) {
         throw createHttpError(
           "Método de pagamento não encontrado",
           404,
@@ -881,6 +922,7 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
       totalShippingPrice = shippingContext.totalShippingPrice;
       totalPaidByCustomer = roundMoney(subTotal - totalDiscount + totalShippingPrice);
       connectContextByStore = await buildStoreConnectContext(cartContext.groupedByStore, session);
+      selectedStripePaymentMethodId = paymentMethod?.stripePaymentMethodId ?? null;
 
       // Revalida estoque dentro da transação para reduzir risco de corrida.
       const variantIds = cartContext.normalizedItems.map((item) => item.productVariantId);
@@ -956,10 +998,24 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
           shippingDocs.map((shippingDoc) => [shippingDoc.subOrder.toString(), shippingDoc._id]),
         );
 
-        for (const subOrder of subOrders) {
-          const shippingId = shippingIdBySubOrder.get(subOrder._id.toString()) ?? null;
-          subOrder.shipping = shippingId;
-          await subOrder.save({ session });
+        if (shippingDocs.length > 0) {
+          const shippingUpdates = subOrders
+            .map((subOrder) => {
+              const shippingId = shippingIdBySubOrder.get(subOrder._id.toString());
+              if (!shippingId) return null;
+
+              return {
+                updateOne: {
+                  filter: { _id: subOrder._id },
+                  update: { $set: { shipping: shippingId } },
+                },
+              };
+            })
+            .filter(Boolean);
+
+          if (shippingUpdates.length > 0) {
+            await SubOrder.bulkWrite(shippingUpdates, { session });
+          }
         }
       }
 
@@ -974,12 +1030,19 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
             order: order._id,
             amount: totalPaidByCustomer,
             currency: "BRL",
-            paymentMethod: {
-              type: paymentMethod.type,
-              brand: paymentMethod.cardBrand,
-              last4: paymentMethod.last4,
-              installments: 1,
-            },
+            paymentMethod: paymentMethod
+              ? {
+                  type: paymentMethod.type,
+                  brand: paymentMethod.cardBrand,
+                  last4: paymentMethod.last4,
+                  installments: 1,
+                }
+              : {
+                  type: "stripe_payment_element",
+                  brand: null,
+                  last4: null,
+                  installments: 1,
+                },
             platformRevenue,
             status: paymentStatuses.PENDING,
             events: [
@@ -987,7 +1050,7 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
                 type: "checkout_intent_created",
                 at: new Date(),
                 metadata: {
-                  paymentMethodId: paymentMethod._id.toString(),
+                  paymentMethodId: paymentMethod?._id?.toString() ?? null,
                   couponCode: couponContext.coupon?.code ?? null,
                   storeCount: connectContextByStore.size,
                 },
@@ -1005,9 +1068,14 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
 
     let stripeIntent;
     try {
+      const { stripeCustomerId } = await ensureStripeCustomerForUser(userId, {
+        stripePaymentMethodId: selectedStripePaymentMethodId,
+      });
+
       stripeIntent = await getStripeClientOrThrow().paymentIntents.create({
         amount: Math.round(totalPaidByCustomer * 100),
         currency: "brl",
+        customer: stripeCustomerId,
         automatic_payment_methods: { enabled: true },
         transfer_group: `order_${order._id}`,
         metadata: {
@@ -1042,18 +1110,23 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
       ]);
 
       throw createHttpError(
-        "Falha ao iniciar pagamento no provedor",
+        `Falha ao iniciar pagamento no provedor: ${error?.raw?.message ?? error?.message ?? "erro desconhecido"}`,
         502,
-        { orderId: order._id, paymentId: payment._id },
+        {
+          orderId: order._id,
+          paymentId: payment._id,
+          providerErrorCode: error?.code ?? null,
+          providerDeclineCode: error?.decline_code ?? null,
+        },
         "CHECKOUT_PAYMENT_INTENT_CREATION_FAILED",
       );
     }
 
     try {
-      payment.stripePaymentIntentId = stripeIntent.id;
-      order.stripePaymentId = stripeIntent.id;
-
-      await Promise.all([payment.save(), order.save()]);
+      await Promise.all([
+        Payment.updateOne({ _id: payment._id }, { $set: { stripePaymentIntentId: stripeIntent.id } }),
+        Order.updateOne({ _id: order._id }, { $set: { stripePaymentId: stripeIntent.id } }),
+      ]);
     } catch (error) {
       try {
         await getStripeClientOrThrow().paymentIntents.cancel(stripeIntent.id);
@@ -1153,6 +1226,7 @@ export const resumeCheckoutIntentForUser = async (userId, orderId) => {
   const stripe = getStripeClientOrThrow();
   const storeCount = await SubOrder.countDocuments({ order: order._id });
   const amountInCents = Math.round(Number(payment.amount ?? order.totalPaidByCustomer ?? 0) * 100);
+  const { stripeCustomerId } = await ensureStripeCustomerForUser(userId);
 
   if (!Number.isFinite(amountInCents) || amountInCents <= 0) {
     throw createHttpError("Valor inválido para retomar pagamento", 400, undefined, "CHECKOUT_INVALID_PAYMENT_AMOUNT");
@@ -1168,6 +1242,13 @@ export const resumeCheckoutIntentForUser = async (userId, orderId) => {
       paymentIntent = null;
     }
   }
+
+  const paymentIntentCustomerId = paymentIntent?.customer ? String(paymentIntent.customer) : "";
+  const shouldRecreatePaymentIntent =
+    Boolean(paymentIntent) &&
+    paymentIntent.status !== "succeeded" &&
+    paymentIntent.status !== "canceled" &&
+    paymentIntentCustomerId !== String(stripeCustomerId);
 
   if (paymentIntent?.status === "succeeded") {
     await markPaymentAsSucceededByIntentId({
@@ -1197,12 +1278,23 @@ export const resumeCheckoutIntentForUser = async (userId, orderId) => {
     };
   }
 
-  if (paymentIntent && paymentIntent.status !== "canceled") {
+  if (shouldRecreatePaymentIntent) {
+    try {
+      await stripe.paymentIntents.cancel(paymentIntent.id);
+    } catch {
+      // Se o intent já estiver terminal ou não puder ser cancelado, seguimos recriando um novo.
+    }
+
+    paymentIntent = null;
+  }
+
+  if (paymentIntent) {
     reused = true;
   } else {
     paymentIntent = await stripe.paymentIntents.create({
       amount: amountInCents,
       currency: String(payment.currency ?? "BRL").toLowerCase(),
+      customer: stripeCustomerId,
       automatic_payment_methods: { enabled: true },
       transfer_group: `order_${order._id.toString()}`,
       metadata: {
