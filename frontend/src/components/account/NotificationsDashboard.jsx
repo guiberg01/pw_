@@ -30,6 +30,7 @@ const getNotificationTypeLabel = (type) => {
     order_status: "Pedido",
     product_sold: "Venda",
     review_received: "Review",
+    review_request: "Avaliação",
     seller_reply: "Resposta",
     order_cancelled: "Cancelamento",
     refund: "Reembolso",
@@ -47,6 +48,14 @@ const getNotificationTypeLabel = (type) => {
   };
 
   return labels[String(type ?? "")] ?? String(type ?? "Notificação");
+};
+
+const normalizeActionUrl = (url) => {
+  if (typeof url !== "string") return null;
+  if (/^\/orders\/\[.*\]$/.test(url) || /^\/pedidos\/\[.*\]$/.test(url)) {
+    return "/pedidos";
+  }
+  return url.replace(/^\/orders\//, "/pedidos/");
 };
 
 export default function NotificationsDashboard() {
@@ -112,7 +121,7 @@ export default function NotificationsDashboard() {
 
   const openNotification = async (notification) => {
     const result = await notificationService.clickNotification(notification._id);
-    const targetUrl = result?.actionUrl || notification.actionUrl || null;
+    const targetUrl = normalizeActionUrl(result?.actionUrl || notification.actionUrl || null);
 
     if (targetUrl) {
       router.push(targetUrl);

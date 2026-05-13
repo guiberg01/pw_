@@ -14,6 +14,7 @@ const getNotificationTypeLabel = (type) => {
     order_status: "Pedido",
     product_sold: "Venda",
     review_received: "Review",
+    review_request: "Avaliação",
     seller_reply: "Resposta",
     order_cancelled: "Cancelamento",
     refund: "Reembolso",
@@ -30,6 +31,14 @@ const getNotificationTypeLabel = (type) => {
     admin_announcement: "Aviso",
   };
   return labels[String(type ?? "")] ?? String(type ?? "Notificação");
+};
+
+const normalizeActionUrl = (url) => {
+  if (typeof url !== "string") return null;
+  if (/^\/orders\/\[.*\]$/.test(url) || /^\/pedidos\/\[.*\]$/.test(url)) {
+    return "/pedidos";
+  }
+  return url.replace(/^\/orders\//, "/pedidos/");
 };
 
 export function NotificationPanel({ isOpen, onClose, onUnreadCountUpdate }) {
@@ -83,7 +92,7 @@ export function NotificationPanel({ isOpen, onClose, onUnreadCountUpdate }) {
       }
 
       const result = await notificationService.clickNotification(notification._id);
-      const targetUrl = result?.actionUrl || notification.actionUrl;
+      const targetUrl = normalizeActionUrl(result?.actionUrl || notification.actionUrl);
 
       if (targetUrl) {
         router.push(targetUrl);
@@ -122,7 +131,7 @@ export function NotificationPanel({ isOpen, onClose, onUnreadCountUpdate }) {
   return (
     <>
       <div
-        className={`fixed inset-0 z-50 overflow-hidden transition-opacity duration-300 ${
+        className={`fixed z-1000 inset-0 overflow-hidden transition-opacity duration-300 ${
           isOpen ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"
         }`}
         aria-hidden={!isOpen}
