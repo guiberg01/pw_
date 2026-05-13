@@ -105,13 +105,13 @@ function AddressFormDialog({ open, onOpenChange, address, onSave }) {
 
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-2xl">
+      <DialogContent className="sm:max-w-2xl h-[calc(100dvh-4rem)] p-5">
         <DialogHeader>
           <DialogTitle>{address ? "Editar endereço" : "Novo endereço"}</DialogTitle>
           <DialogDescription>Cadastre ou atualize os dados usados nas entregas.</DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4">
+        <form onSubmit={form.handleSubmit(handleSubmit)} className="space-y-4 overflow-x-hidden overflow-y-auto">
           <div className="grid gap-4 sm:grid-cols-2">
             <Controller
               name="label"
@@ -511,7 +511,7 @@ export function AddressManagement() {
     <>
       <AccountSectionCard
         title="Endereços"
-        className="col-start-1 col-end-3"
+        className="col-start-1 col-end-3 "
         description="Adicione, edite e defina o endereço padrão para suas compras."
         action={
           <Button size="sm" onClick={openCreateDialog}>
@@ -527,7 +527,7 @@ export function AddressManagement() {
             ))}
           </div>
         ) : addresses.length ? (
-          <div className="flex flex-wrap gap-3">
+          <div className="flex flex-wrap gap-3 ">
             {addresses.map((address) => (
               <AddressCard
                 key={address._id}

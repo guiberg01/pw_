@@ -10,7 +10,7 @@ export function AccountPageHero({ eyebrow, title, description, actions, children
   return (
     <section
       className={cn(
-        "overflow-hidden rounded-[28px] border border-slate-200 bg-linear-to-br from-slate-950 via-slate-900 to-blue-900 text-white shadow-[0_20px_80px_rgba(15,23,42,0.22)]",
+        "overflow-hidden rounded-[28px] border border-slate-200 bg-linear-to-bl from-[#1a4f9c] to-blue-900 text-white shadow-[0_20px_80px_rgba(15,23,42,0.22)]",
         className,
       )}
     >
@@ -40,13 +40,13 @@ export function AccountPageHero({ eyebrow, title, description, actions, children
 
 export function AccountStatGrid({ stats = [] }) {
   return (
-    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+    <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4 ">
       {stats.map((stat) => (
-        <Card key={stat.label} className="border-slate-200 bg-white/95 shadow-sm">
-          <CardContent className="space-y-1 p-4">
-            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-500">{stat.label}</div>
-            <div className="text-2xl font-black tracking-tight text-slate-950">{stat.value}</div>
-            {stat.helper ? <div className="text-xs text-slate-500">{stat.helper}</div> : null}
+        <Card key={stat.label} className="border-slate-200 bg-linear-to-b from-[#1a4f9c] to-blue-900 shadow-sm">
+          <CardContent className="space-y-1 p-4 ">
+            <div className="text-[11px] font-semibold uppercase tracking-[0.22em] text-yellow-300">{stat.label}</div>
+            <div className="text-2xl font-black tracking-tight text-white">{stat.value}</div>
+            {stat.helper ? <div className="text-xs text-slate-200">{stat.helper}</div> : null}
           </CardContent>
         </Card>
       ))}

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { Bell, Heart, Package, PencilLine, RefreshCw, Star, Store, UserRound } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -28,10 +29,12 @@ const QUICK_LINKS = [
 ];
 
 export default function ProfileDashboard() {
+  const router = useRouter();
   const [profile, setProfile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false);
+  const [isDeletingProfile, setIsDeletingProfile] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -93,6 +96,27 @@ export default function ProfileDashboard() {
       setProfile(data);
     } catch (err) {
       toast.error(err?.response?.data?.message || "Erro ao atualizar perfil");
+    }
+  };
+
+  const handleDeleteProfile = async () => {
+    const confirmed = window.confirm(
+      "Tem certeza que deseja excluir sua conta? Essa ação fará soft-delete do seu perfil e desconectará sua sessão.",
+    );
+
+    if (!confirmed) return;
+
+    setIsDeletingProfile(true);
+
+    try {
+      await profileService.deleteMyProfile();
+      toast.success("Seu perfil foi excluído com sucesso");
+      router.push("/");
+      router.refresh();
+    } catch (err) {
+      toast.error(err?.response?.data?.message || "Erro ao excluir perfil");
+    } finally {
+      setIsDeletingProfile(false);
     }
   };
 
@@ -251,6 +275,30 @@ export default function ProfileDashboard() {
             {*/}
           <AddressManagement />
           <PaymentMethodManagement />
+
+          <AccountSectionCard
+            title="Zona de risco"
+            description="Exclusão com soft-delete, logout imediato e preservação do histórico da conta."
+          >
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                <div className="text-sm font-semibold text-rose-900">Excluir perfil</div>
+                <p className="mt-1 text-sm leading-6 text-rose-900/80">
+                  Essa ação desativa o acesso, marca o perfil como excluído e, se você for seller, também oculta loja e
+                  produtos associados.
+                </p>
+              </div>
+
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={handleDeleteProfile}
+                disabled={isDeletingProfile}
+              >
+                {isDeletingProfile ? "Excluindo..." : "Excluir meu perfil"}
+              </Button>
+            </div>
+          </AccountSectionCard>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
