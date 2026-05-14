@@ -18,7 +18,7 @@ const getCartItemVariantId = (productVariant) =>
 const cartCookieOptions = {
   httpOnly: true,
   secure: process.env.NODE_ENV === "production",
-  sameSite: "strict",
+  sameSite: process.env.NODE_ENV === "production" ? "none" : "strict",
   maxAge: GUEST_CART_TTL_SECONDS * 1000,
 };
 

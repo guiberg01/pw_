@@ -5,7 +5,7 @@ import Store from "../models/store.model.js";
 import { sendSuccess } from "../helpers/successResponse.js";
 import { createHttpError } from "../helpers/httpError.js";
 
-const resolveSellerDashboardBaseUrl = () => {
+const resolveSellerFrontendBaseUrl = () => {
   const candidates = [
     process.env.SELLER_DASHBOARD_BASE_URL,
     process.env.FRONTEND_BASE_URL,
@@ -137,10 +137,10 @@ export const oauthCallback = async (req, res) => {
         { upsert: true, new: true },
       );
 
-      const dashboardPath = `/dashboard/stores/${storeId}/shipping?authenticated=true`;
-      const dashboardBaseUrl = resolveSellerDashboardBaseUrl();
+      const onboardingPath = `/seller/onboarding?melhorenvio=authenticated&storeId=${storeId}`;
+      const frontendBaseUrl = resolveSellerFrontendBaseUrl();
 
-      return res.redirect(`${dashboardBaseUrl ?? ""}${dashboardPath}`);
+      return res.redirect(`${frontendBaseUrl ?? ""}${onboardingPath}`);
     })
     .catch((oauthError) => {
       return res.status(500).json({
