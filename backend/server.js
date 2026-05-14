@@ -106,7 +106,7 @@ const corsOptions = {
 
 const globalRateLimit = createRateLimit({
   windowMs: 15 * 60 * 1000, // 15 minutes
-  max: 500, // limit de requests de cada ip por windowMs
+  max: 10000, // limit de requests de cada ip por windowMs
   scope: "global",
 });
 
