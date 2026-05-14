@@ -31,8 +31,7 @@ export const useCart = () => {
     const requestId = requestIdRef.current;
 
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-      const res = await fetch(apiBase ? `${apiBase.replace(/\/$/, "")}/cart` : "/api/cart", {
+      const res = await fetch("/api/cart", {
         credentials: "include",
       });
 
@@ -60,11 +59,7 @@ export const useCart = () => {
   const addToCart = useCallback(
     async (productVariantId, quantity = 1) => {
       try {
-        const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-        const url = apiBase
-          ? `${apiBase.replace(/\/$/, "")}/cart/items/${productVariantId}`
-          : `/api/cart/items/${productVariantId}`;
-        console.debug("useCart.addToCart ->", { url, productVariantId, quantity, apiBase });
+        const url = `/api/cart/items/${productVariantId}`;
         const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
@@ -92,18 +87,12 @@ export const useCart = () => {
   const updateQuantity = useCallback(
     async (productVariantId, quantity) => {
       try {
-        const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-        const res = await fetch(
-          apiBase
-            ? `${apiBase.replace(/\/$/, "")}/cart/items/${productVariantId}`
-            : `/api/cart/items/${productVariantId}`,
-          {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ quantity }),
-            credentials: "include",
-          },
-        );
+        const res = await fetch(`/api/cart/items/${productVariantId}`, {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ quantity }),
+          credentials: "include",
+        });
 
         if (!res.ok) {
           const error = await res.json();
@@ -125,16 +114,10 @@ export const useCart = () => {
   const decrementQuantity = useCallback(
     async (productVariantId) => {
       try {
-        const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-        const res = await fetch(
-          apiBase
-            ? `${apiBase.replace(/\/$/, "")}/cart/items/${productVariantId}/decrement`
-            : `/api/cart/items/${productVariantId}/decrement`,
-          {
-            method: "PUT",
-            credentials: "include",
-          },
-        );
+        const res = await fetch(`/api/cart/items/${productVariantId}/decrement`, {
+          method: "PUT",
+          credentials: "include",
+        });
 
         if (!res.ok) {
           const error = await res.json();
@@ -156,11 +139,7 @@ export const useCart = () => {
   const removeItem = useCallback(
     async (productVariantId) => {
       try {
-        const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-        const url = apiBase
-          ? `${apiBase.replace(/\/$/, "")}/cart/items/${productVariantId}`
-          : `/api/cart/items/${productVariantId}`;
-        const res = await fetch(url, {
+        const res = await fetch(`/api/cart/items/${productVariantId}`, {
           method: "DELETE",
           credentials: "include",
         });
@@ -184,9 +163,7 @@ export const useCart = () => {
 
   const clearCart = useCallback(async () => {
     try {
-      const apiBase = process.env.NEXT_PUBLIC_API_URL || "";
-      const url = apiBase ? `${apiBase.replace(/\/$/, "")}/cart/all` : "/api/cart/all";
-      const res = await fetch(url, {
+      const res = await fetch("/api/cart/all", {
         method: "DELETE",
         credentials: "include",
       });

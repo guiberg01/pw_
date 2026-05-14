@@ -1,7 +1,5 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "";
-
 const getApiUrl = (endpoint) => {
-  return API_BASE ? `${API_BASE.replace(/\/$/, "")}${endpoint}` : `/api${endpoint}`;
+  return `/api${endpoint}`;
 };
 
 export const cartService = {
