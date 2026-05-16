@@ -18,6 +18,7 @@ import { profileService } from "@/services/profileService";
 import { formatDateOnly } from "@/lib/formatters";
 import { getFrontendCookie } from "@/utils/cookies";
 import { EditProfileDialog } from "./EditProfileDialog";
+import ConfirmActionDialog from "@/components/ui/confirm-action-dialog";
 import { AddressManagement } from "./AddressManagement";
 import { PaymentMethodManagement } from "./PaymentMethodManagement";
 
@@ -99,13 +100,13 @@ export default function ProfileDashboard() {
     }
   };
 
+  const [confirmOpen, setConfirmOpen] = useState(false);
+
   const handleDeleteProfile = async () => {
-    const confirmed = window.confirm(
-      "Tem certeza que deseja excluir sua conta? Essa ação fará soft-delete do seu perfil e desconectará sua sessão.",
-    );
+    setConfirmOpen(true);
+  };
 
-    if (!confirmed) return;
-
+  const executeDeleteProfile = async () => {
     setIsDeletingProfile(true);
 
     try {
@@ -117,6 +118,7 @@ export default function ProfileDashboard() {
       toast.error(err?.response?.data?.message || "Erro ao excluir perfil");
     } finally {
       setIsDeletingProfile(false);
+      setConfirmOpen(false);
     }
   };
 
@@ -275,30 +277,6 @@ export default function ProfileDashboard() {
             {*/}
           <AddressManagement />
           <PaymentMethodManagement />
-
-          <AccountSectionCard
-            title="Zona de risco"
-            description="Exclusão com soft-delete, logout imediato e preservação do histórico da conta."
-          >
-            <div className="space-y-4">
-              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
-                <div className="text-sm font-semibold text-rose-900">Excluir perfil</div>
-                <p className="mt-1 text-sm leading-6 text-rose-900/80">
-                  Essa ação desativa o acesso, marca o perfil como excluído e, se você for seller, também oculta loja e
-                  produtos associados.
-                </p>
-              </div>
-
-              <Button
-                variant="destructive"
-                className="w-full"
-                onClick={handleDeleteProfile}
-                disabled={isDeletingProfile}
-              >
-                {isDeletingProfile ? "Excluindo..." : "Excluir meu perfil"}
-              </Button>
-            </div>
-          </AccountSectionCard>
         </div>
 
         <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
@@ -328,9 +306,57 @@ export default function ProfileDashboard() {
                   </Link>
                 );
               })}
+              {store ? (
+                <div className="space-y-4 col-end-3 col-start-1">
+                  <div className="rounded-2xl bg-slate-50 p-4">
+                    <div className="flex items-start gap-3">
+                      <div className="rounded-xl bg-white p-2 text-blue-700 shadow-sm ring-1 ring-slate-200">
+                        <Store className="h-4 w-4" />
+                      </div>
+                      <div>
+                        <div className="font-semibold text-slate-950">{store.name}</div>
+                        <div className="text-sm text-slate-600">/{store.slug}</div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <Button asChild className="w-full">
+                    <Link href="/seller">Abrir área do seller</Link>
+                  </Button>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <p className="text-sm leading-6 text-slate-600">
+                    Seu perfil está pronto para uso como cliente. Se quiser vender, complete o onboarding da loja.
+                  </p>
+                  <Button asChild className="w-full">
+                    <Link href="/seller/onboarding">Começar onboarding de seller</Link>
+                  </Button>
+                </div>
+              )}
             </div>
           </AccountSectionCard>
+          <AccountSectionCard title="Zona de risco" description="Exclusão de conta.">
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4">
+                <div className="text-sm font-semibold text-rose-900">Excluir perfil</div>
+                <p className="mt-1 text-sm leading-6 text-rose-900/80">
+                  Essa ação exclui seu perfil e desativa o acesso, se você for seller, também oculta loja e produtos
+                  associados.
+                </p>
+              </div>
 
+              <Button
+                variant="destructive"
+                className="w-full"
+                onClick={handleDeleteProfile}
+                disabled={isDeletingProfile}
+              >
+                {isDeletingProfile ? "Excluindo..." : "Excluir meu perfil"}
+              </Button>
+            </div>
+          </AccountSectionCard>
+          {/*}
           <AccountSectionCard
             title="Minha operação"
             description="Dados adicionais da conta, incluindo loja e estrutura de consumo."
@@ -364,6 +390,7 @@ export default function ProfileDashboard() {
               </div>
             )}
           </AccountSectionCard>
+              {*/}
         </div>
 
         <EditProfileDialog
@@ -371,6 +398,16 @@ export default function ProfileDashboard() {
           open={isEditDialogOpen}
           onOpenChange={setIsEditDialogOpen}
           onSave={handleSaveProfile}
+        />
+
+        <ConfirmActionDialog
+          open={confirmOpen}
+          onOpenChange={setConfirmOpen}
+          title="Excluir perfil"
+          description="Tem certeza que deseja excluir sua conta? Essa ação exclui seu perfil e desconectará sua sessão."
+          confirmLabel="Excluir"
+          isProcessing={isDeletingProfile}
+          onConfirm={executeDeleteProfile}
         />
       </div>
     </main>
