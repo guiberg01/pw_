@@ -1391,7 +1391,7 @@ export function CheckoutClient() {
 
           <div className="rounded-3xl border border-slate-200 bg-white/90 p-4 text-sm text-slate-600 shadow-sm">
             <p className="font-semibold text-slate-900">Dica prática</p>
-            <p className="mt-1">Se mudar endereço ou cupom, o frete é recalculado com o backend real de checkout.</p>
+            <p className="mt-1">Se mudar endereço ou cupom, o frete é recalculado com o checkout.</p>
           </div>
         </aside>
       </div>

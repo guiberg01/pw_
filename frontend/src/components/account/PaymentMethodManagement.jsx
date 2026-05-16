@@ -53,7 +53,7 @@ function PaymentMethodFormDialog({ open, onOpenChange, method, onSave }) {
         isDefault: values.isDefault,
       });
     } catch (error) {
-      console.error("Error saving payment method:", error);
+      console.error("Erro ao salvar método de pagamento:", error);
     }
   };
 
@@ -194,7 +194,7 @@ function PaymentMethodFormDialog({ open, onOpenChange, method, onSave }) {
               )}
             />
 
-            <DialogFooter className="px-0 pb-0 pt-2">
+            <DialogFooter className="p-4">
               <Button
                 type="button"
                 variant="outline"
@@ -217,13 +217,13 @@ function PaymentMethodFormDialog({ open, onOpenChange, method, onSave }) {
               </p>
               <ol className="list-decimal list-inside space-y-2 text-sm text-blue-800 ml-2">
                 <li>Vá para a página de checkout</li>
-                <li>Selecione `&quot;`;Adicionar novo cartão`&quot;`</li>
+                <li>Selecione &quot;Adicionar novo cartão&quot;</li>
                 <li>Preencha os dados seguindo as instruções de segurança do Stripe</li>
                 <li>Seu cartão será registrado automaticamente</li>
               </ol>
             </div>
 
-            <DialogFooter className="px-0 pb-0 pt-2">
+            <DialogFooter className="p-4">
               <Button type="button" variant="outline" onClick={() => handleOpenChange(false)}>
                 Entendi
               </Button>
