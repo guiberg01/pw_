@@ -29,6 +29,20 @@ const roundMoney = (value) => Math.round((Number(value) + Number.EPSILON) * 100)
 const CHECKOUT_EVENT_SOURCE = "stripe_webhook";
 const DEFAULT_COMMISSION_RATE = 10;
 
+const isTransientTransactionError = (err) => {
+  if (!err) return false;
+  try {
+    if (Array.isArray(err.errorLabels) && err.errorLabels.includes("TransientTransactionError")) return true;
+    if (err.code === 112 || String(err.code) === "112") return true;
+    const msg = String(err.message ?? "").toLowerCase();
+    if (msg.includes("write conflict") || msg.includes("writeconflict") || msg.includes("transienttransactionerror"))
+      return true;
+  } catch (e) {
+    return false;
+  }
+  return false;
+};
+
 const stripeClient = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : null;
 
 export const getStripeClientOrThrow = () => {
@@ -853,8 +867,8 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
   const shippingCartFingerprint = buildCheckoutCartFingerprint(shippingCartContext.groupedByStore);
   const shippingPolicyFingerprint = JSON.stringify(resolveFreightPolicyByCoupon(shippingCouponContext.coupon));
 
-  const session = await mongoose.startSession();
-
+  const maxTxnAttempts = Number(process.env.MONGO_TRANSACTION_RETRIES ?? 3);
+  let attempt = 0;
   let order;
   let payment;
   let subOrders;
@@ -865,9 +879,12 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
   let connectContextByStore;
   let selectedStripePaymentMethodId;
 
-  try {
-    session.startTransaction();
+  while (true) {
+    const session = await mongoose.startSession();
     try {
+      attempt++;
+      session.startTransaction();
+
       const address = await Address.findOne({ _id: addressId, user: userId }).session(session);
       const paymentMethod = paymentMethodId
         ? await PaymentMethod.findOne({ _id: paymentMethodId, user: userId }).session(session)
@@ -1060,80 +1077,96 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
         ],
         { session },
       );
+
       await session.commitTransaction();
+      break;
     } catch (error) {
-      await session.abortTransaction();
+      try {
+        await session.abortTransaction();
+      } catch (e) {}
+
+      const shouldRetry = isTransientTransactionError(error) && attempt < maxTxnAttempts;
+      if (shouldRetry) {
+        await new Promise((r) => setTimeout(r, 50 * attempt));
+        continue;
+      }
+
       throw error;
+    } finally {
+      try {
+        await session.endSession();
+      } catch (e) {}
     }
+  }
 
-    let stripeIntent;
-    try {
-      const { stripeCustomerId } = await ensureStripeCustomerForUser(userId, {
-        stripePaymentMethodId: selectedStripePaymentMethodId,
-      });
+  let stripeIntent;
+  let persistenceWarning = false;
+  try {
+    const { stripeCustomerId } = await ensureStripeCustomerForUser(userId, {
+      stripePaymentMethodId: selectedStripePaymentMethodId,
+    });
 
-      stripeIntent = await getStripeClientOrThrow().paymentIntents.create({
-        amount: Math.round(totalPaidByCustomer * 100),
-        currency: "brl",
-        customer: stripeCustomerId,
-        automatic_payment_methods: { enabled: true },
-        transfer_group: `order_${order._id}`,
-        metadata: {
-          orderId: order._id.toString(),
-          paymentId: payment._id.toString(),
-          userId: userId.toString(),
-          storeCount: String(connectContextByStore.size),
-        },
-      });
-    } catch (error) {
-      await Promise.all([
-        Payment.updateOne(
-          { _id: payment._id, status: paymentStatuses.PENDING },
-          {
-            $set: { status: paymentStatuses.FAILED },
-            $push: {
-              events: {
-                type: "checkout_intent_failed",
-                at: new Date(),
-                metadata: {
-                  reason: error?.message ?? "stripe_intent_creation_failed",
-                },
+    stripeIntent = await getStripeClientOrThrow().paymentIntents.create({
+      amount: Math.round(totalPaidByCustomer * 100),
+      currency: "brl",
+      customer: stripeCustomerId,
+      automatic_payment_methods: { enabled: true },
+      transfer_group: `order_${order._id}`,
+      metadata: {
+        orderId: order._id.toString(),
+        paymentId: payment._id.toString(),
+        userId: userId.toString(),
+        storeCount: String(connectContextByStore.size),
+      },
+    });
+  } catch (error) {
+    await Promise.all([
+      Payment.updateOne(
+        { _id: payment._id, status: paymentStatuses.PENDING },
+        {
+          $set: { status: paymentStatuses.FAILED },
+          $push: {
+            events: {
+              type: "checkout_intent_failed",
+              at: new Date(),
+              metadata: {
+                reason: error?.message ?? "stripe_intent_creation_failed",
               },
             },
           },
-        ),
-        Order.updateOne({ _id: order._id, status: orderStatuses.PENDING }, { $set: { status: orderStatuses.FAILED } }),
-        SubOrder.updateMany(
-          { order: order._id, status: subOrderStatuses.PENDING },
-          { $set: { status: subOrderStatuses.FAILED } },
-        ),
-      ]);
-
-      throw createHttpError(
-        `Falha ao iniciar pagamento no provedor: ${error?.raw?.message ?? error?.message ?? "erro desconhecido"}`,
-        502,
-        {
-          orderId: order._id,
-          paymentId: payment._id,
-          providerErrorCode: error?.code ?? null,
-          providerDeclineCode: error?.decline_code ?? null,
         },
-        "CHECKOUT_PAYMENT_INTENT_CREATION_FAILED",
-      );
-    }
+      ),
+      Order.updateOne({ _id: order._id, status: orderStatuses.PENDING }, { $set: { status: orderStatuses.FAILED } }),
+      SubOrder.updateMany(
+        { order: order._id, status: subOrderStatuses.PENDING },
+        { $set: { status: subOrderStatuses.FAILED } },
+      ),
+    ]);
+
+    throw createHttpError(
+      `Falha ao iniciar pagamento no provedor: ${error?.raw?.message ?? error?.message ?? "erro desconhecido"}`,
+      502,
+      {
+        orderId: order._id,
+        paymentId: payment._id,
+        providerErrorCode: error?.code ?? null,
+        providerDeclineCode: error?.decline_code ?? null,
+      },
+      "CHECKOUT_PAYMENT_INTENT_CREATION_FAILED",
+    );
+  }
+
+  try {
+    await Promise.all([
+      Payment.updateOne({ _id: payment._id }, { $set: { stripePaymentIntentId: stripeIntent.id } }),
+      Order.updateOne({ _id: order._id }, { $set: { stripePaymentId: stripeIntent.id } }),
+    ]);
+  } catch (error) {
+    try {
+      await getStripeClientOrThrow().paymentIntents.cancel(stripeIntent.id);
+    } catch (e) {}
 
     try {
-      await Promise.all([
-        Payment.updateOne({ _id: payment._id }, { $set: { stripePaymentIntentId: stripeIntent.id } }),
-        Order.updateOne({ _id: order._id }, { $set: { stripePaymentId: stripeIntent.id } }),
-      ]);
-    } catch (error) {
-      try {
-        await getStripeClientOrThrow().paymentIntents.cancel(stripeIntent.id);
-      } catch {
-        // Se falhar para cancelar, o evento permanece rastreável via metadata no Stripe.
-      }
-
       await Promise.all([
         Payment.updateOne(
           { _id: payment._id },
@@ -1157,44 +1190,40 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
           { $set: { status: subOrderStatuses.FAILED } },
         ),
       ]);
-
-      throw createHttpError(
-        "Falha ao persistir dados do pagamento",
-        500,
-        { orderId: order._id, paymentId: payment._id, stripePaymentIntentId: stripeIntent.id },
-        "CHECKOUT_PAYMENT_PERSISTENCE_FAILED",
-      );
+    } catch (e) {
+      console.error("Erro de persistencia de checkout (best-effort):", e?.message ?? e);
     }
 
-    return {
-      orderId: order._id,
-      paymentId: payment._id,
-      paymentIntent: {
-        provider: "stripe",
-        status: stripeIntent.status,
-        clientSecret: stripeIntent.client_secret,
-        amountInCents: stripeIntent.amount,
-        currency: String(stripeIntent.currency ?? "brl").toUpperCase(),
-      },
-      summary: {
-        totalPriceProducts: subTotal,
-        totalDiscount,
-        totalShippingPrice,
-        totalPaidByCustomer,
-        subOrders: subOrders.map((subOrder) => ({
-          id: subOrder._id,
-          store: subOrder.store,
-          subTotal: subOrder.subTotal,
-          discountAmount: subOrder.discountAmount,
-          shippingCost: subOrder.shippingCost,
-          vendorNetAmount: subOrder.vendorNetAmount,
-          status: subOrder.status,
-        })),
-      },
-    };
-  } finally {
-    await session.endSession();
+    persistenceWarning = true;
   }
+
+  return {
+    orderId: order._id,
+    paymentId: payment._id,
+    paymentIntent: {
+      provider: "stripe",
+      status: stripeIntent.status,
+      clientSecret: stripeIntent.client_secret,
+      amountInCents: stripeIntent.amount,
+      currency: String(stripeIntent.currency ?? "brl").toUpperCase(),
+    },
+    persistenceWarning,
+    summary: {
+      totalPriceProducts: subTotal,
+      totalDiscount,
+      totalShippingPrice,
+      totalPaidByCustomer,
+      subOrders: subOrders.map((subOrder) => ({
+        id: subOrder._id,
+        store: subOrder.store,
+        subTotal: subOrder.subTotal,
+        discountAmount: subOrder.discountAmount,
+        shippingCost: subOrder.shippingCost,
+        vendorNetAmount: subOrder.vendorNetAmount,
+        status: subOrder.status,
+      })),
+    },
+  };
 };
 
 export const resumeCheckoutIntentForUser = async (userId, orderId) => {
