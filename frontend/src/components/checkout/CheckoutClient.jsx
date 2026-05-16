@@ -347,9 +347,7 @@ function AddCardDialog({ open, onOpenChange, onCreated }) {
         cardElementRef.current = null;
         elementsRef.current = null;
         stripeRef.current = null;
-      } catch {
-        // ignore cleanup errors
-      }
+      } catch {}
     };
   }, [open]);
 
@@ -583,9 +581,29 @@ export function CheckoutClient() {
     }
   }, []);
 
+  const buyNowMode = Boolean(productId);
+
+  const visibleItems = useMemo(() => {
+    if (!buyNowMode) return items;
+    const cartItem = items.find((it) => String(it?.productVariant?._id) === String(productId));
+    return cartItem ? [{ ...cartItem, quantity: 1 }] : [];
+  }, [buyNowMode, items, productId]);
+
+  const checkoutRequestItems = useMemo(() => {
+    if (!buyNowMode) return null;
+
+    return visibleItems.map((item) => ({
+      productVariantId: item.productVariant?._id,
+      quantity: 1,
+    }));
+  }, [buyNowMode, visibleItems]);
+
   const loadShippingOptions = useCallback(
     async (addressId) => {
-      if (!addressId || items.length === 0) return;
+      const requestItems = checkoutRequestItems;
+      const itemCount = requestItems ? requestItems.length : items.length;
+
+      if (!addressId || itemCount === 0) return;
 
       setShippingLoading(true);
       setCheckoutError("");
@@ -593,6 +611,7 @@ export function CheckoutClient() {
         const result = await checkoutService.getShippingOptions({
           addressId,
           ...(discount?.code ? { couponCode: discount.code } : {}),
+          ...(requestItems ? { items: requestItems } : {}),
         });
 
         setShippingOptions(result);
@@ -609,17 +628,8 @@ export function CheckoutClient() {
         setShippingLoading(false);
       }
     },
-    [discount, items.length],
+    [checkoutRequestItems, discount, items.length],
   );
-
-  // buyNowMode: when a productId query param is present, show only this item with quantity 1
-  const buyNowMode = Boolean(productId);
-
-  const visibleItems = useMemo(() => {
-    if (!buyNowMode) return items;
-    const cartItem = items.find((it) => String(it?.productVariant?._id) === String(productId));
-    return cartItem ? [{ ...cartItem, quantity: 1 }] : [];
-  }, [buyNowMode, items, productId]);
 
   useEffect(() => {
     if (productId && cartLoading) return;
@@ -676,9 +686,7 @@ export function CheckoutClient() {
         const result = await checkoutService.getShippingOptions({
           addressId: selectedAddressId,
           ...(discount?.code ? { couponCode: discount.code } : {}),
-          ...(buyNowMode
-            ? { items: visibleItems.map((item) => ({ productVariantId: item.productVariant?._id, quantity: 1 })) }
-            : {}),
+          ...(checkoutRequestItems ? { items: checkoutRequestItems } : {}),
         });
 
         setShippingOptions(result);
@@ -697,7 +705,7 @@ export function CheckoutClient() {
     };
 
     void fetchShippingOptions();
-  }, [addressLoading, bootstrapping, discount, buyNowMode, visibleItems, selectedAddressId]);
+  }, [addressLoading, bootstrapping, checkoutRequestItems, discount, buyNowMode, visibleItems, selectedAddressId]);
 
   useEffect(() => {
     // Auto-select default or first payment method when loaded
@@ -858,9 +866,8 @@ export function CheckoutClient() {
         payload.paymentMethodId = selectedPaymentMethodId;
       }
 
-      // If buy-now mode, pass explicit items so backend can create intent for these items only
-      if (buyNowMode) {
-        payload.items = visibleItems.map((it) => ({ productVariantId: it.productVariant?._id, quantity: it.quantity }));
+      if (checkoutRequestItems) {
+        payload.items = checkoutRequestItems;
       }
 
       const result = await checkoutService.createCheckoutIntent(payload);
@@ -870,7 +877,6 @@ export function CheckoutClient() {
         throw new Error("Não foi possível carregar o Stripe.");
       }
 
-      // If a saved card is selected and has a stripePaymentMethodId, try direct confirmation
       if (
         !stripePaymentElementMode &&
         selectedPaymentMethod?.type === "card" &&
@@ -916,7 +922,6 @@ export function CheckoutClient() {
 
   const isEmpty = !bootstrapping && !cartLoading && items.length === 0;
 
-  // use visibleItems for totals when in buyNowMode
   const displaySubtotal = buyNowMode
     ? visibleItems.reduce((s, it) => s + Number(it?.productVariant?.price ?? 0) * Number(it?.quantity ?? 0), 0)
     : Number(totalPrice ?? 0);
