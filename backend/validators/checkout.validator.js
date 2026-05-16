@@ -14,9 +14,15 @@ const checkoutShippingSelectionSchema = z.object({
   carrierId: z.union([z.string().trim().min(1), z.number()]),
 });
 
+const checkoutItemSchema = z.object({
+  productVariantId: mongoIdSchema,
+  quantity: z.number().int().positive(),
+});
+
 export const checkoutShippingOptionsSchema = z.object({
   addressId: mongoIdSchema,
   couponCode: checkoutCouponCodeSchema,
+  items: z.array(checkoutItemSchema).optional(),
 });
 
 export const createCheckoutIntentSchema = z.object({
@@ -24,6 +30,7 @@ export const createCheckoutIntentSchema = z.object({
   paymentMethodId: mongoIdSchema.optional(),
   couponCode: checkoutCouponCodeSchema,
   shippingSelections: z.array(checkoutShippingSelectionSchema).min(1, "Seleção de frete é obrigatória"),
+  items: z.array(checkoutItemSchema).optional(),
 });
 
 export const checkoutOrderIdParamSchema = z.object({
