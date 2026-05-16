@@ -867,8 +867,6 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
   const shippingCartFingerprint = buildCheckoutCartFingerprint(shippingCartContext.groupedByStore);
   const shippingPolicyFingerprint = JSON.stringify(resolveFreightPolicyByCoupon(shippingCouponContext.coupon));
 
-  const maxTxnAttempts = Number(process.env.MONGO_TRANSACTION_RETRIES ?? 3);
-  let attempt = 0;
   let order;
   let payment;
   let subOrders;
@@ -878,13 +876,9 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
   let totalPaidByCustomer;
   let connectContextByStore;
   let selectedStripePaymentMethodId;
-
-  while (true) {
-    const session = await mongoose.startSession();
-    try {
-      attempt++;
-      session.startTransaction();
-
+  const session = await mongoose.startSession();
+  try {
+    await session.withTransaction(async () => {
       const address = await Address.findOne({ _id: addressId, user: userId }).session(session);
       const paymentMethod = paymentMethodId
         ? await PaymentMethod.findOne({ _id: paymentMethodId, user: userId }).session(session)
@@ -935,13 +929,11 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
       }
 
       totalDiscount = couponContext.discountAmount;
-
       totalShippingPrice = shippingContext.totalShippingPrice;
       totalPaidByCustomer = roundMoney(subTotal - totalDiscount + totalShippingPrice);
       connectContextByStore = await buildStoreConnectContext(cartContext.groupedByStore, session);
       selectedStripePaymentMethodId = paymentMethod?.stripePaymentMethodId ?? null;
 
-      // Revalida estoque dentro da transação para reduzir risco de corrida.
       const variantIds = cartContext.normalizedItems.map((item) => item.productVariantId);
       const variants = await ProductVariant.find({ _id: { $in: variantIds } })
         .session(session)
@@ -1077,26 +1069,9 @@ export const createCheckoutIntentForUser = async (userId, payload) => {
         ],
         { session },
       );
-
-      await session.commitTransaction();
-      break;
-    } catch (error) {
-      try {
-        await session.abortTransaction();
-      } catch (e) {}
-
-      const shouldRetry = isTransientTransactionError(error) && attempt < maxTxnAttempts;
-      if (shouldRetry) {
-        await new Promise((r) => setTimeout(r, 50 * attempt));
-        continue;
-      }
-
-      throw error;
-    } finally {
-      try {
-        await session.endSession();
-      } catch (e) {}
-    }
+    });
+  } finally {
+    await session.endSession();
   }
 
   let stripeIntent;
@@ -1635,14 +1610,17 @@ export const dispatchPendingPayoutTransfersForStore = async (storeId) => {
 
 const markPaymentAsSucceededByIntentId = async ({ stripePaymentIntent, stripeEventId, metadata = {} }) => {
   const stripePaymentIntentId = stripePaymentIntent.id;
-  const session = await mongoose.startSession();
   let orderIdForPayout = null;
   let paymentIdForPayout = null;
   let orderIdForNotification = null;
 
+  const session = await mongoose.startSession();
   try {
-    session.startTransaction();
-    try {
+    await session.withTransaction(async () => {
+      orderIdForPayout = null;
+      paymentIdForPayout = null;
+      orderIdForNotification = null;
+
       const payment = await resolvePaymentFromStripeEvent({
         session,
         stripePaymentIntentId,
@@ -1856,24 +1834,20 @@ const markPaymentAsSucceededByIntentId = async ({ stripePaymentIntent, stripeEve
       });
 
       await payment.save({ session });
-      await session.commitTransaction();
-    } catch (error) {
-      await session.abortTransaction();
-      throw error;
-    }
-
-    if (orderIdForPayout && paymentIdForPayout) {
-      await dispatchPendingPayoutTransfersForOrder({
-        orderId: orderIdForPayout,
-        paymentId: paymentIdForPayout,
-      });
-    }
-
-    if (orderIdForNotification) {
-      await notifyOrderPaid(orderIdForNotification);
-    }
+    });
   } finally {
     await session.endSession();
+  }
+
+  if (orderIdForPayout && paymentIdForPayout) {
+    await dispatchPendingPayoutTransfersForOrder({
+      orderId: orderIdForPayout,
+      paymentId: paymentIdForPayout,
+    });
+  }
+
+  if (orderIdForNotification) {
+    await notifyOrderPaid(orderIdForNotification);
   }
 };
 
